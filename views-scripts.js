@@ -58,25 +58,63 @@ const getViewScripts = (protocol, host) => {
             }
         });
 
-        function handleFileUpload(event) {
+        async function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
             
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 const content = e.target.result;
                 
-                // Mostra anteprima del contenuto con word-wrap e overflow
-                const contentElement = document.getElementById('file_content');
-                contentElement.textContent = content;
-                contentElement.style.whiteSpace = 'pre-wrap'; // Preserva i ritorni a capo
-                contentElement.style.wordBreak = 'break-all'; // Spezza parole lunghe
-                contentElement.style.overflowWrap = 'break-word'; // Alternativa a word-break
-                
-                document.getElementById('file_content_preview').style.display = 'block';
-                
-                // Salva il contenuto in un campo nascosto per il form
-                document.getElementById('m3u_file_content').value = content;
+                try {
+                    // Richiedi la cancellazione del vecchio file e il caricamento del nuovo
+                    const response = await fetch('/upload-playlist', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            content: content,
+                            filename: file.name
+                        })
+                    });
+        
+                    const result = await response.json();
+        
+                    if (result.success) {
+                        // Mostra anteprima del contenuto
+                        document.getElementById('file_content').textContent = content;
+                        document.getElementById('file_content_preview').style.display = 'block';
+                        
+                        // Salva il contenuto in un campo nascosto per il form
+                        document.getElementById('m3u_file_content').value = content;
+        
+                        // Avvia la ricostruzione della cache
+                        const rebuildResponse = await fetch('/api/rebuild-cache', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                m3u: 'file://uploads/user_playlist.txt',
+                                use_local_file: true
+                            })
+                        });
+        
+                        const rebuildResult = await rebuildResponse.json();
+                        
+                        if (rebuildResult.success) {
+                            alert('Playlist caricata e catalogo ricostruito con successo!');
+                        } else {
+                            alert('Errore nella ricostruzione del catalogo: ' + rebuildResult.message);
+                        }
+                    } else {
+                        alert('Errore nel caricamento del file: ' + result.message);
+                    }
+                } catch (error) {
+                    console.error('Errore:', error);
+                    alert('Errore durante il caricamento del file');
+                }
             };
             
             reader.readAsText(file);
