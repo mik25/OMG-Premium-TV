@@ -42,6 +42,16 @@ const renderConfigPage = (protocol, host, query, manifest) => {
                    color: #fff;
                    background: purple;
                }
+               #file_content {
+                   white-space: pre-wrap;
+                   word-break: break-all;
+                   overflow-wrap: break-word;
+                   max-height: 300px;
+                   overflow-y: auto;
+                   background: rgba(0,0,0,0.2);
+                   padding: 10px;
+                   border-radius: 4px;
+               }
                #background-video {
                    position: fixed;
                    right: 0;
