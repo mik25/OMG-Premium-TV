@@ -293,7 +293,7 @@ async function streamHandler({ id, config: userConfig }) {
                     
                     if (userConfig.force_proxy === 'true') {
                         // Se force_proxy è attivo, mostriamo SOLO i flussi passati attraverso il proxy
-                        if (userConfig.proxy && userConfig.proxy_pwd) {
+                        if (userConfig.proxy && (userConfig.proxy_type === 'smallprox' || userConfig.proxy_pwd)) {
                             console.log('⚙️ Applicazione proxy ai flussi risolti (modalità forzata)...');
                             
                             for (const resolvedStream of resolvedStreams) {
@@ -321,7 +321,7 @@ async function streamHandler({ id, config: userConfig }) {
                         streams = resolvedStreams;
                         
                         // 2. Aggiungiamo anche i flussi risolti tramite proxy, se il proxy è configurato
-                        if (userConfig.proxy && userConfig.proxy_pwd) {
+                        if (userConfig.proxy && (userConfig.proxy_type === 'smallprox' || userConfig.proxy_pwd)) {
                             console.log('⚙️ Aggiunta dei flussi proxy ai flussi risolti...');
                             
                             for (const resolvedStream of resolvedStreams) {
@@ -400,7 +400,7 @@ async function processOriginalStreams(originalStreamDetails, channel, userConfig
     let streams = [];
     
     if (userConfig.force_proxy === 'true') {
-        if (userConfig.proxy && userConfig.proxy_pwd) {
+        if (userConfig.proxy && (userConfig.proxy_type === 'smallprox' || userConfig.proxy_pwd)) {
             for (const streamDetails of originalStreamDetails) {
                 const proxyStreams = await StreamProxyManager.getProxyStreams(streamDetails, userConfig);
                 streams.push(...proxyStreams);
@@ -422,7 +422,7 @@ async function processOriginalStreams(originalStreamDetails, channel, userConfig
             streams.push(streamMeta);
 
             // Aggiungi anche stream proxy se configurato
-            if (userConfig.proxy && userConfig.proxy_pwd) {
+            if (userConfig.proxy && (userConfig.proxy_type === 'smallprox' || userConfig.proxy_pwd)) {
                 const proxyStreams = await StreamProxyManager.getProxyStreams(streamDetails, userConfig);
                 streams.push(...proxyStreams);
             }
