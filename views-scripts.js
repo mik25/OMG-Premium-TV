@@ -194,67 +194,103 @@ const getViewScripts = (protocol, host) => {
             });
         }
 
-        function backupConfig() {
-            const queryString = getConfigQueryString();
-            const params = Object.fromEntries(new URLSearchParams(queryString));
-            
-            params.epg_enabled = params.epg_enabled === 'true';
-            params.force_proxy = params.force_proxy === 'true';
-            params.resolver_enabled = params.resolver_enabled === 'true';
-            params.use_local_file = params.use_local_file === 'true';
-            params.include_python_playlist = params.include_python_playlist === 'true';
-            
-            // Salva gli intervalli di aggiornamento
-            params.resolver_update_interval = 
-                document.getElementById('resolverUpdateInterval').value || 
-                document.querySelector('input[name="resolver_update_interval"]')?.value || 
-                '';
+        async function backupConfig() {
+            try {
+                console.log("Inizio backup della configurazione");
+                const queryString = getConfigQueryString();
+                const params = Object.fromEntries(new URLSearchParams(queryString));
                 
-            // Crea una copia dell'oggetto params senza il contenuto del file
-            // per migliorare la leggibilità nel file di backup
-            const configParams = {...params};
-            
-            // Se stiamo usando un file locale, salva il contenuto della playlist alla fine
-            if (params.use_local_file) {
-                let fileContent = document.getElementById('m3u_file_content').value;
+                params.epg_enabled = params.epg_enabled === 'true';
+                params.force_proxy = params.force_proxy === 'true';
+                params.resolver_enabled = params.resolver_enabled === 'true';
+                params.use_local_file = params.use_local_file === 'true';
+                params.include_python_playlist = params.include_python_playlist === 'true';
                 
-                // Se il contenuto non è disponibile nel campo nascosto, proviamo a
-                // recuperarlo dal preview mostrato all'utente
-                if (!fileContent && document.getElementById('file_content_preview').style.display !== 'none') {
-                    fileContent = document.getElementById('file_content').textContent;
-                }
-                
-                // Rimuovi il contenuto dalla copia principale dei parametri
+                // Salva gli intervalli di aggiornamento
+                params.resolver_update_interval = 
+                    document.getElementById('resolverUpdateInterval').value || 
+                    document.querySelector('input[name="resolver_update_interval"]')?.value || 
+                    '';
+                    
+                // Crea una copia dell'oggetto params senza il contenuto del file
+                const configParams = {...params};
                 delete configParams.m3u_file_content;
                 
-                // Aggiungi il contenuto del file come ultima proprietà
-                params.m3u_file_content = fileContent;
-            }
-            
-            // Crea una versione formattata della configurazione
-            let jsonConfig = JSON.stringify(configParams, null, 2);
-            
-            // Se c'è il contenuto del file, aggiungilo alla fine come proprietà separata
-            if (params.use_local_file && params.m3u_file_content) {
-                jsonConfig = jsonConfig.substring(0, jsonConfig.length - 1); // Rimuovi l'ultima parentesi
-                jsonConfig += ',\n  "m3u_file_content": ';
-                
-                // Se il contenuto è molto lungo, mettiamo un commento per maggiore chiarezza
-                if (params.m3u_file_content.length > 500) {
-                    jsonConfig += '// Contenuto della playlist (molto lungo)\n  ';
+                // Se stiamo usando un file locale, recupera il contenuto dal server
+                if (params.use_local_file) {
+                    console.log("Recupero il contenuto del file locale dal server");
+                    try {
+                        showLoader('Recupero contenuto playlist in corso...');
+                        const response = await fetch('/api/get-local-playlist');
+                        const data = await response.json();
+                        hideLoader();
+                        
+                        if (data.success && data.content) {
+                            console.log("Contenuto playlist recuperato dal server:", data.content.length, "caratteri");
+                            params.m3u_file_content = data.content;
+                        } else {
+                            console.warn("File playlist non trovato sul server:", data.message);
+                            
+                            // Fallback: prova a recuperare il contenuto dai campi del form
+                            const fallbackContent = document.getElementById('m3u_file_content').value || 
+                                                  document.getElementById('file_content').textContent || '';
+                                                  
+                            if (fallbackContent) {
+                                console.log("Usando contenuto fallback dal form:", fallbackContent.length, "caratteri");
+                                params.m3u_file_content = fallbackContent;
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Errore nel recupero della playlist dal server:", error);
+                        hideLoader();
+                        
+                        // Fallback: prova a recuperare il contenuto dai campi del form
+                        const fallbackContent = document.getElementById('m3u_file_content').value || 
+                                              document.getElementById('file_content').textContent || '';
+                                              
+                        if (fallbackContent) {
+                            console.log("Usando contenuto fallback dal form dopo errore:", fallbackContent.length, "caratteri");
+                            params.m3u_file_content = fallbackContent;
+                        }
+                    }
                 }
                 
-                jsonConfig += JSON.stringify(params.m3u_file_content);
-                jsonConfig += '\n}';
+                // Serializza la configurazione base
+                let jsonConfig = JSON.stringify(configParams, null, 2);
+                
+                // Se c'è contenuto del file, aggiungilo alla fine
+                if (params.use_local_file && params.m3u_file_content) {
+                    console.log("Aggiungo contenuto del file al backup");
+                    // Rimuovi l'ultima parentesi
+                    jsonConfig = jsonConfig.substring(0, jsonConfig.length - 1);
+                    jsonConfig += ',\n  "m3u_file_content": ';
+                    jsonConfig += JSON.stringify(params.m3u_file_content);
+                    jsonConfig += '\n}';
+                }
+                
+                console.log("Creazione del blob per il download");
+                const configBlob = new Blob([jsonConfig], {type: 'application/json'});
+                const url = URL.createObjectURL(configBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'omg_tv_config.json';
+                
+                // Aggiungi l'elemento al DOM e clicca
+                document.body.appendChild(a);
+                a.click();
+                
+                // Pulisci
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                
+                console.log("Backup completato");
+            } catch (error) {
+                hideLoader();
+                console.error("Errore durante il backup:", error);
+                alert("Errore durante il backup: " + error.message);
             }
-            
-            const configBlob = new Blob([jsonConfig], {type: 'application/json'});
-            const url = URL.createObjectURL(configBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'omg_tv_config.json';
-            a.click();
-            URL.revokeObjectURL(url);
         }
         
         async function restoreConfig(event) {
