@@ -41,10 +41,12 @@ const getViewScripts = (protocol, host) => {
                 urlInput.disabled = false;
                 urlInput.required = true;
                 fileSection.style.display = 'none';
-                // Reset il campo file
-                document.getElementById('m3u_file_input').value = '';
-                document.getElementById('file_content_preview').style.display = 'none';
-                document.getElementById('m3u_file_content').value = '';
+                
+                // Non resettare il contenuto del file quando si disattiva l'opzione,
+                // in modo che se l'utente riattiva l'opzione, il contenuto sia ancora disponibile
+                // document.getElementById('m3u_file_input').value = '';
+                // document.getElementById('file_content_preview').style.display = 'none';
+                // document.getElementById('m3u_file_content').value = '';
             }
         }
 
