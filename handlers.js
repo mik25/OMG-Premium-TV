@@ -395,7 +395,7 @@ async function streamHandler({ id, config: userConfig }) {
     }
 }
 
-// Funzione ausiliaria per processare gli stream originali (codice esistente estratto)
+// Funzione ausiliaria per processare gli stream originali
 async function processOriginalStreams(originalStreamDetails, channel, userConfig) {
     let streams = [];
     
