@@ -297,28 +297,34 @@ const getViewScripts = (protocol, host) => {
             const file = event.target.files[0];
             if (!file) return;
         
+            console.log("Inizio ripristino configurazione da file:", file.name);
             showLoader('Ripristino configurazione in corso...');
             
             const reader = new FileReader();
             reader.onload = async function(e) {
                 try {
+                    console.log("File letto, analisi JSON...");
                     const config = JSON.parse(e.target.result);
+                    console.log("Configurazione parsata:", config);
         
                     const form = document.getElementById('configForm');
                     
                     // Gestisci l'opzione use_local_file
+                    console.log("Gestione use_local_file:", config.use_local_file);
                     if (config.use_local_file) {
                         document.getElementById('use_local_file').checked = true;
                         toggleM3USource(true);
                         
                         // Se abbiamo anche il contenuto del file, ripristinalo
                         if (config.m3u_file_content) {
+                            console.log("Ripristino contenuto del file:", config.m3u_file_content.length, "caratteri");
                             document.getElementById('m3u_file_content').value = config.m3u_file_content;
                             document.getElementById('file_content').textContent = config.m3u_file_content;
                             document.getElementById('file_content_preview').style.display = 'block';
         
                             // Salva il contenuto nel file
                             try {
+                                console.log("Caricamento del file sul server...");
                                 const response = await fetch('/upload-playlist', {
                                     method: 'POST',
                                     headers: {
@@ -329,12 +335,33 @@ const getViewScripts = (protocol, host) => {
                                     })
                                 });
         
-                                if (!response.ok) {
-                                    throw new Error('Errore nel salvataggio del file');
+                                const result = await response.json();
+                                console.log("Risposta caricamento:", result);
+                                
+                                if (!result.success) {
+                                    throw new Error('Errore nel salvataggio del file: ' + (result.message || 'Errore sconosciuto'));
                                 }
                             } catch (saveError) {
                                 console.error('Errore nel salvataggio del file:', saveError);
-                                alert('Errore nel ripristino del file M3U');
+                                alert('Errore nel ripristino del file M3U: ' + saveError.message);
+                            }
+                        } else {
+                            // Se l'opzione use_local_file è attiva ma non abbiamo il contenuto,
+                            // proviamo a recuperarlo dal server
+                            try {
+                                const response = await fetch('/api/get-local-playlist');
+                                const data = await response.json();
+                                
+                                if (data.success && data.content) {
+                                    console.log("Recuperato contenuto dal server:", data.content.length, "caratteri");
+                                    document.getElementById('m3u_file_content').value = data.content;
+                                    document.getElementById('file_content').textContent = data.content;
+                                    document.getElementById('file_content_preview').style.display = 'block';
+                                } else {
+                                    console.warn("Nessun file locale trovato sul server");
+                                }
+                            } catch (getError) {
+                                console.error("Errore nel recupero del file locale:", getError);
                             }
                         }
                     } else {
@@ -344,10 +371,12 @@ const getViewScripts = (protocol, host) => {
         
                     // Gestisci l'opzione include_python_playlist
                     if (config.include_python_playlist !== undefined) {
+                        console.log("Impostazione include_python_playlist:", config.include_python_playlist);
                         document.getElementById('include_python_playlist').checked = config.include_python_playlist;
                     }
                     
                     // Continua con il resto del ripristino delle altre impostazioni
+                    console.log("Ripristino altre impostazioni...");
                     for (const [key, value] of Object.entries(config)) {
                         // Ignora le proprietà speciali gestite separatamente
                         if (key === 'use_local_file' || key === 'm3u_file_content' || key === 'include_python_playlist') continue;
@@ -378,79 +407,100 @@ const getViewScripts = (protocol, host) => {
                         hiddenField.value = config.resolver_update_interval;
                     
                         // Pianifica l'aggiornamento del resolver
-                        await fetch('/api/resolver', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                action: 'schedule',
-                                interval: config.resolver_update_interval
-                            })
-                        });
+                        try {
+                            await fetch('/api/resolver', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    action: 'schedule',
+                                    interval: config.resolver_update_interval
+                                })
+                            });
+                            console.log("Aggiornamento resolver pianificato");
+                        } catch (error) {
+                            console.error("Errore nella pianificazione del resolver:", error);
+                        }
                     }
                     
                     // Ripristina anche i campi Python
                     if (config.python_script_url) {
                         document.getElementById('pythonScriptUrl').value = config.python_script_url;
+                        document.getElementById('hidden_python_script_url').value = config.python_script_url;
         
                         // Scarica lo script Python
-                        const downloadResponse = await fetch('/api/python-script', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                action: 'download',
-                                url: config.python_script_url
-                            })
-                        });
+                        try {
+                            console.log("Download script Python...");
+                            const downloadResponse = await fetch('/api/python-script', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    action: 'download',
+                                    url: config.python_script_url
+                                })
+                            });
         
-                        const downloadData = await downloadResponse.json();
-                        if (!downloadData.success) {
-                            throw new Error('Download dello script fallito');
+                            const downloadData = await downloadResponse.json();
+                            if (!downloadData.success) {
+                                throw new Error('Download dello script fallito: ' + downloadData.message);
+                            }
+        
+                            // Esegui lo script Python
+                            console.log("Esecuzione script Python...");
+                            const executeResponse = await fetch('/api/python-script', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    action: 'execute'
+                                })
+                            });
+        
+                            const executeData = await executeResponse.json();
+                            if (!executeData.success) {
+                                throw new Error('Esecuzione dello script fallita: ' + executeData.message);
+                            }
+        
+                            console.log("Script Python eseguito con successo");
+                            alert('Script Python scaricato ed eseguito con successo!');
+                            showM3uUrl(executeData.m3uUrl);
+                        } catch (pythonError) {
+                            console.error("Errore con lo script Python:", pythonError);
+                            alert("Errore con lo script Python: " + pythonError.message);
                         }
-        
-                        // Esegui lo script Python
-                        const executeResponse = await fetch('/api/python-script', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                action: 'execute'
-                            })
-                        });
-        
-                        const executeData = await executeResponse.json();
-                        if (!executeData.success) {
-                            throw new Error('Esecuzione dello script fallita');
-                        }
-        
-                        alert('Script Python scaricato ed eseguito con successo!');
-                        showM3uUrl(executeData.m3uUrl);
                     }
         
-                    // Gestisci l'intervallo di aggiornamento
+                    // Gestisci l'intervallo di aggiornamento Python
                     if (config.python_update_interval) {
                         document.getElementById('updateInterval').value = config.python_update_interval;
+                        document.getElementById('hidden_python_update_interval').value = config.python_update_interval;
         
                         // Pianifica l'aggiornamento se presente
-                        await fetch('/api/python-script', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                action: 'schedule',
-                                interval: config.python_update_interval
-                            })
-                        });
+                        try {
+                            await fetch('/api/python-script', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    action: 'schedule',
+                                    interval: config.python_update_interval
+                                })
+                            });
+                            console.log("Aggiornamento Python pianificato");
+                        } catch (error) {
+                            console.error("Errore nella pianificazione Python:", error);
+                        }
                     }
         
                     // Avvia esplicitamente la ricostruzione della cache
-                    if (config.m3u) {
+                    if (config.m3u || config.use_local_file) {
                         try {
+                            console.log("Ricostruzione cache...");
                             const rebuildResponse = await fetch('/api/rebuild-cache', {
                                 method: 'POST',
                                 headers: {
@@ -461,8 +511,10 @@ const getViewScripts = (protocol, host) => {
                             
                             const rebuildResult = await rebuildResponse.json();
                             if (rebuildResult.success) {
+                                console.log("Cache ricostruita con successo");
                                 alert('Configurazione ripristinata e ricostruzione cache avviata!');
                             } else {
+                                console.warn("Errore ricostruzione cache:", rebuildResult.message);
                                 alert('Configurazione ripristinata ma errore nella ricostruzione: ' + rebuildResult.message);
                             }
                         } catch (rebuildError) {
@@ -473,18 +525,24 @@ const getViewScripts = (protocol, host) => {
         
                     hideLoader();
                     
-                    // Aggiorna la pagina solo dopo che tutte le operazioni sono state completate
-                    const configQueryString = getConfigQueryString();
-                    const configBase64 = btoa(configQueryString);
-                    window.location.href = \`${protocol}://${host}/\${configBase64}/configure\`;
+                    // Aggiungi un timeout prima del redirect per assicurarti che tutte le operazioni asincrone siano completate
+                    console.log("Attesa completamento operazioni asincrone prima del redirect...");
+                    setTimeout(() => {
+                        console.log("Ricaricamento pagina con nuova configurazione...");
+                        const configQueryString = getConfigQueryString();
+                        const configBase64 = btoa(configQueryString);
+                        window.location.href = \`${protocol}://${host}/\${configBase64}/configure\`;
+                    }, 2000);
+        
                 } catch (error) {
                     hideLoader();
-                    console.error('Errore:', error);
-                    alert('Errore nel caricamento del file di configurazione: ' + error.message);
+                    console.error('Errore durante il ripristino:', error);
+                    alert('Errore nel ripristino della configurazione: ' + error.message);
                 }
             };
             reader.readAsText(file);
         }
+
 
 
         // Funzioni per lo script Python
