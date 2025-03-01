@@ -836,6 +836,23 @@ const getViewScripts = (protocol, host) => {
             }
         }
 
+        function readLocalM3UFile() {
+            const fs = require('fs');
+            const path = require('path');
+            const uploadsDir = path.join(__dirname, 'uploads');
+            const filePath = path.join(uploadsDir, 'user_playlist.txt');
+            
+            try {
+                if (fs.existsSync(filePath)) {
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    return content;
+                }
+            } catch (error) {
+                console.error('Errore nella lettura del file M3U locale:', error);
+            }
+            return '';
+        }
+
         //funzioni per visualizzare la rotella di caricamento
         function showLoader(message = "Operazione in corso...") {
             document.getElementById('loaderMessage').textContent = message;
