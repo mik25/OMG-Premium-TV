@@ -19,8 +19,9 @@ services:
         rm -rf /tmp/repo &&
         git clone --branch main https://github.com/mccoy88f/OMG-Premium-TV.git /tmp/repo &&
         cp -r /tmp/repo/* /app/ &&
-        mkdir -p /app/data /app/temp && 
+        mkdir -p /app/data /app/temp /app/uploads && 
         chmod 777 /app/temp &&
+        chmod 777 /app/uploads &&
         chown -R node:node /app/data &&
         cd /app &&
         npm install &&
