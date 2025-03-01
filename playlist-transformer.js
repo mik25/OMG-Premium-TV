@@ -403,8 +403,8 @@ class PlaylistTransformer {
                   ? [url] 
                   : content.split('\n').filter(line => line.trim() && line.startsWith('http'));
           }
-
-          // 2. Aggiungi la playlist Python generata se richiesto e disponibile
+  
+          // 2. Aggiungi la playlist Python generata SOLO se il flag è attivo
           if (config.include_python_playlist === 'true') {
               const path = require('path');
               const fs = require('fs');
@@ -419,10 +419,10 @@ class PlaylistTransformer {
                   console.log('⚠️ Playlist Python richiesta ma non trovata');
               }
           }
-
+  
           console.log('\n=== Inizio Processamento Playlist ===');
           console.log('Playlist da processare:', playlistUrls.length);
-
+  
           const allGenres = [];
           const allEpgUrls = new Set();
           
@@ -461,13 +461,13 @@ class PlaylistTransformer {
                   console.error(`❌ Errore nel processamento della playlist ${playlistUrl}:`, playlistError.message);
               }
           }
-
+  
           const finalResult = {
               genres: allGenres,
               channels: Array.from(this.channelsMap.values()),
               epgUrls: Array.from(allEpgUrls)
           };
-
+  
           finalResult.channels.forEach(channel => {
               if (channel.streamInfo.urls.length > 1) {
                   channel.streamInfo.urls = channel.streamInfo.urls.filter(
@@ -475,7 +475,7 @@ class PlaylistTransformer {
                   );
               }
           });
-
+  
           console.log('\nRiepilogo Processamento:');
           console.log(`✓ Totale canali processati: ${finalResult.channels.length}`);
           console.log(`✓ Totale generi trovati: ${finalResult.genres.length}`);
@@ -483,11 +483,11 @@ class PlaylistTransformer {
               console.log(`✓ URL EPG trovati: ${allEpgUrls.size}`);
           }
           console.log('=== Processamento Completato ===\n');
-
+  
           this.channelsMap.clear();
           this.channelsWithoutStreams = [];
           return finalResult;
-
+  
       } catch (error) {
           console.error('❌ Errore playlist:', error.message);
           throw error;
