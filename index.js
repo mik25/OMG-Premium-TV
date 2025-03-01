@@ -24,13 +24,13 @@ function saveM3UContentToMain(content) {
     const path = require('path');
     const uploadsDir = path.join(__dirname, 'uploads');
     
-    // Assicurati che la directory uploads esista nella cartella principale
+    // Assicurati che la directory uploads esista
     if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    // Genera un nome file univoco
-    const fileName = `user_playlist_${Date.now()}.txt`;
+    // Usa sempre lo stesso nome file
+    const fileName = 'user_playlist.txt';
     const filePath = path.join(uploadsDir, fileName);
     
     // Salva il contenuto nel file
