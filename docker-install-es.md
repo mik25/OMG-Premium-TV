@@ -56,7 +56,7 @@ Instalar OMG Premium TV mediante Docker ofrece varias ventajas:
    - Haz clic en **New Space**
    - Elige un nombre para tu space (ej. `omg-premium-tv`)
    - Selecciona **Docker** como tipo de Space
-   - Elige la visibilidad (pública o privada)
+   - Elige la visibilidad pública
    - Haz clic en **Create Space**
 
 3. **Configura el Dockerfile** 📝
