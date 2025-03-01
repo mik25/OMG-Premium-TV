@@ -5,6 +5,29 @@ const config = require('./config');
 
 async function readExternalFile(url) {
   try {
+      // Gestisci i file locali
+      if (url.startsWith('file://')) {
+          const fs = require('fs');
+          const filePath = url.replace('file://', '');
+          
+          console.log('Lettura file locale:', filePath);
+          
+          if (!fs.existsSync(filePath)) {
+              throw new Error(`File locale non trovato: ${filePath}`);
+          }
+          
+          const content = fs.readFileSync(filePath, 'utf8');
+          
+          if (content.trim().startsWith('#EXTM3U')) {
+              console.log('File M3U diretto trovato (locale)');
+              return [url];
+          }
+          
+          console.log('File lista URL trovato (locale)');
+          return content.split('\n').filter(line => line.trim() !== '');
+      }
+      
+      // Per URL remote, usa il codice esistente
       const response = await axios.get(url);
       const content = response.data;
 
@@ -345,11 +368,57 @@ class PlaylistTransformer {
       try {
           await this.loadRemappingRules(config);
           
-          const response = await axios.get(url);
-          const content = response.data;
-          const playlistUrls = content.startsWith('#EXTM3U') 
-              ? [url] 
-              : content.split('\n').filter(line => line.trim() && line.startsWith('http'));
+          // Raccogli le URL delle playlist
+          let playlistUrls = [];
+          
+          // 1. Gestisci URL principale
+          if (url.startsWith('file://')) {
+              // Logica per file locale
+              const fs = require('fs');
+              const filePath = url.replace('file://', '');
+              
+              console.log('\n=== Lettura file locale ===');
+              console.log('Percorso:', filePath);
+              
+              if (!fs.existsSync(filePath)) {
+                  throw new Error(`File locale non trovato: ${filePath}`);
+              }
+              
+              const content = fs.readFileSync(filePath, 'utf8');
+              
+              if (content.trim().startsWith('#EXTM3U')) {
+                  playlistUrls = [url];
+              } else {
+                  // Se contiene liste di URL, usa quelli
+                  playlistUrls = content.split('\n')
+                      .filter(line => line.trim() && (line.trim().startsWith('http') || line.trim().startsWith('https')));
+                      
+                  console.log(`✓ Trovate ${playlistUrls.length} URL nel file locale`);
+              }
+          } else {
+              // Usa il metodo esistente per URL remote
+              const response = await axios.get(url);
+              const content = response.data;
+              playlistUrls = content.startsWith('#EXTM3U') 
+                  ? [url] 
+                  : content.split('\n').filter(line => line.trim() && line.startsWith('http'));
+          }
+
+          // 2. Aggiungi la playlist Python generata se richiesto e disponibile
+          if (config.include_python_playlist === 'true') {
+              const path = require('path');
+              const fs = require('fs');
+              const PythonRunner = require('./python-runner');
+              
+              const pythonM3UPath = PythonRunner.getM3UPath();
+              
+              if (fs.existsSync(pythonM3UPath)) {
+                  console.log('✓ Aggiunta playlist Python generata:', pythonM3UPath);
+                  playlistUrls.push(`file://${pythonM3UPath}`);
+              } else {
+                  console.log('⚠️ Playlist Python richiesta ma non trovata');
+              }
+          }
 
           console.log('\n=== Inizio Processamento Playlist ===');
           console.log('Playlist da processare:', playlistUrls.length);
@@ -359,21 +428,37 @@ class PlaylistTransformer {
           
           for (const playlistUrl of playlistUrls) {
               console.log('\nProcesso playlist:', playlistUrl);
-              const playlistResponse = await axios.get(playlistUrl);
-              const result = await this.parseM3UContent(playlistResponse.data, config);
               
-              result.genres.forEach(genre => {
-                  if (!allGenres.includes(genre)) {
-                      allGenres.push(genre);
-                  }
-              });
-              
-              if (result.epgUrl) {
-                  if (Array.isArray(result.epgUrl)) {
-                      result.epgUrl.forEach(url => allEpgUrls.add(url));
+              try {
+                  let playlistData;
+                  
+                  // Gestisci URL locali e remote
+                  if (playlistUrl.startsWith('file://')) {
+                      const fs = require('fs');
+                      const filePath = playlistUrl.replace('file://', '');
+                      playlistData = fs.readFileSync(filePath, 'utf8');
                   } else {
-                      allEpgUrls.add(result.epgUrl);
+                      const playlistResponse = await axios.get(playlistUrl);
+                      playlistData = playlistResponse.data;
                   }
+                  
+                  const result = await this.parseM3UContent(playlistData, config);
+                  
+                  result.genres.forEach(genre => {
+                      if (!allGenres.includes(genre)) {
+                          allGenres.push(genre);
+                      }
+                  });
+                  
+                  if (result.epgUrl) {
+                      if (Array.isArray(result.epgUrl)) {
+                          result.epgUrl.forEach(url => allEpgUrls.add(url));
+                      } else {
+                          allEpgUrls.add(result.epgUrl);
+                      }
+                  }
+              } catch (playlistError) {
+                  console.error(`❌ Errore nel processamento della playlist ${playlistUrl}:`, playlistError.message);
               }
           }
 
