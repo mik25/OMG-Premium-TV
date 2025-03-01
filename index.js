@@ -19,6 +19,22 @@ app.use(cors());
 app.use(express.json({limit: '5mb'}));
 app.use(express.urlencoded({limit: '5mb', extended: true}));
 
+app.get('/api/get-local-playlist', (req, res) => {
+    try {
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const filePath = path.join(uploadsDir, 'user_playlist.txt');
+        
+        if (fs.existsSync(filePath)) {
+            const content = fs.readFileSync(filePath, 'utf8');
+            res.json({ success: true, content });
+        } else {
+            res.json({ success: false, message: 'File non trovato' });
+        }
+    } catch (error) {
+        console.error('Errore nella lettura del file:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 app.post('/upload-playlist', (req, res) => {
     const { content } = req.body;
