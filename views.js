@@ -283,16 +283,11 @@ const renderConfigPage = (protocol, host, query, manifest) => {
                            <p style="margin-top: 0;">Carica un file di testo con un URL di playlist per riga:</p>
                            <input type="file" id="m3u_file_input" accept=".txt,.m3u,.m3u8">
                            <div id="file_content_preview" style="margin-top: 10px; 
-                                                               max-height: 150px; 
-                                                               overflow-y: auto; 
-                                                               background: rgba(0,0,0,0.2); 
-                                                               padding: 10px; 
-                                                               border-radius: 4px;
-                                                               display: none;">
+                           <div id="file_content_preview" style="...${localM3UContent ? 'display: block;' : 'display: none;'}">
                                <strong>Contenuto del file:</strong>
-                               <pre id="file_content" style="white-space: pre-wrap; word-break: break-all;"></pre>
+                               <pre id="file_content" style="...">${localM3UContent}</pre>
                            </div>
-                           <input type="hidden" id="m3u_file_content" name="m3u_file_content">
+                           <input type="hidden" id="m3u_file_content" name="m3u_file_content" value="${localM3UContent}">
                        </div>
                        
                        <div style="margin-top: 10px; margin-bottom: 15px; display: flex; align-items: center;">
