@@ -66,8 +66,13 @@ const getViewScripts = (protocol, host) => {
             reader.onload = function(e) {
                 const content = e.target.result;
                 
-                // Mostra anteprima del contenuto
-                document.getElementById('file_content').textContent = content;
+                // Mostra anteprima del contenuto con word-wrap e overflow
+                const contentElement = document.getElementById('file_content');
+                contentElement.textContent = content;
+                contentElement.style.whiteSpace = 'pre-wrap'; // Preserva i ritorni a capo
+                contentElement.style.wordBreak = 'break-all'; // Spezza parole lunghe
+                contentElement.style.overflowWrap = 'break-word'; // Alternativa a word-break
+                
                 document.getElementById('file_content_preview').style.display = 'block';
                 
                 // Salva il contenuto in un campo nascosto per il form
