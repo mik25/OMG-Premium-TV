@@ -61,7 +61,20 @@ function enrichWithDetailedEPG(meta, channelId, userConfig) {
 
 async function metaHandler({ type, id, config: userConfig }) {
     try {
-        // Verifica che ci sia un URL M3U valido nella configurazione
+        // Verifica se stiamo usando un file locale
+        if (userConfig.use_local_file === 'true') {
+            const fs = require('fs');
+            const path = require('path');
+            const uploadsDir = path.join(__dirname, 'uploads');
+            const filePath = path.join(uploadsDir, 'user_playlist.txt');
+            
+            if (fs.existsSync(filePath)) {
+                userConfig.m3u = `file://${filePath}`;
+            } else {
+                console.log('❌ File locale non trovato: user_playlist.txt');
+            }
+        }
+        
         if (!userConfig.m3u && userConfig.use_local_file !== 'true') {
             console.log('❌ URL M3U mancante');
             return { meta: null };
