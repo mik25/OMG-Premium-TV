@@ -77,8 +77,8 @@ function loadCustomConfig() {
                     },
                     catalogs: [{
                         ...baseConfig.manifest.catalogs[0],
-                        id: addonConfigExists ? 'omg_plus_tv' : baseConfig.manifest.catalogs[0].id,
-                        name: addonConfigExists ? 'OMG+ TV' : baseConfig.manifest.catalogs[0].name,
+                        id: addonConfigExists ? 'omg_premium_tv' : baseConfig.manifest.catalogs[0].id,
+                        name: addonConfigExists ? 'OMG Premium TV' : baseConfig.manifest.catalogs[0].name,
                         extra: [
                             {
                                 name: 'genre',
