@@ -76,7 +76,6 @@ const getViewScripts = (protocol, host) => {
             
             reader.readAsText(file);
         }
-
         // Funzioni per la gestione della configurazione
         function getConfigQueryString() {
             const form = document.getElementById('configForm');
