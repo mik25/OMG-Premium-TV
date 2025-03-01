@@ -245,10 +245,42 @@ const renderConfigPage = (protocol, host, query, manifest) => {
                    <h2>Genera Configurazione</h2>
                    <form id="configForm" onsubmit="updateConfig(event)">
                        <label>M3U URL:</label>
-                       <input type="url" name="m3u" 
+                       <input type="url" id="m3u_url_input" name="m3u" 
                               value="${m3uIsDisabled ? m3uDefaultUrl : (query.m3u || '')}" 
                               ${m3uIsDisabled ? 'readonly' : ''} 
+                              ${query.use_local_file === 'true' ? 'disabled' : ''}
                               required>
+                       
+                       <div style="margin-top: 10px; margin-bottom: 15px; display: flex; align-items: center;">
+                           <input type="checkbox" id="use_local_file" name="use_local_file" ${query.use_local_file === 'true' ? 'checked' : ''} 
+                                  onchange="toggleM3USource(this.checked)">
+                           <label for="use_local_file" style="margin-left: 5px; display: inline;">Usa file di playlist locale</label>
+                       </div>
+                       
+                       <div id="m3u_file_section" style="display: ${query.use_local_file === 'true' ? 'block' : 'none'}; 
+                                                       background: rgba(255,255,255,0.05); 
+                                                       padding: 15px; 
+                                                       border-radius: 4px; 
+                                                       margin-bottom: 15px;">
+                           <p style="margin-top: 0;">Carica un file di testo con un URL di playlist per riga:</p>
+                           <input type="file" id="m3u_file_input" accept=".txt,.m3u,.m3u8">
+                           <div id="file_content_preview" style="margin-top: 10px; 
+                                                               max-height: 150px; 
+                                                               overflow-y: auto; 
+                                                               background: rgba(0,0,0,0.2); 
+                                                               padding: 10px; 
+                                                               border-radius: 4px;
+                                                               display: none;">
+                               <strong>Contenuto del file:</strong>
+                               <pre id="file_content" style="white-space: pre-wrap; word-break: break-all;"></pre>
+                           </div>
+                           <input type="hidden" id="m3u_file_content" name="m3u_file_content">
+                       </div>
+                       
+                       <div style="margin-top: 10px; margin-bottom: 15px; display: flex; align-items: center;">
+                           <input type="checkbox" id="include_python_playlist" name="include_python_playlist" ${query.include_python_playlist === 'true' ? 'checked' : ''}>
+                           <label for="include_python_playlist" style="margin-left: 5px; display: inline;">Includi playlist Python generata (se disponibile)</label>
+                       </div>
                        
                        <label>EPG URL:</label>
                        <input type="url" name="epg" value="${query.epg || ''}">
