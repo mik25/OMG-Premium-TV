@@ -204,17 +204,51 @@ const getViewScripts = (protocol, host) => {
             params.use_local_file = params.use_local_file === 'true';
             params.include_python_playlist = params.include_python_playlist === 'true';
             
-            // Se stiamo usando un file locale, salva anche il contenuto nel backup
-            if (params.use_local_file) {
-                params.m3u_file_content = document.getElementById('m3u_file_content').value;
-            }
-            
+            // Salva gli intervalli di aggiornamento
             params.resolver_update_interval = 
                 document.getElementById('resolverUpdateInterval').value || 
                 document.querySelector('input[name="resolver_update_interval"]')?.value || 
                 '';
                 
-            const configBlob = new Blob([JSON.stringify(params, null, 2)], {type: 'application/json'});
+            // Crea una copia dell'oggetto params senza il contenuto del file
+            // per migliorare la leggibilità nel file di backup
+            const configParams = {...params};
+            
+            // Se stiamo usando un file locale, salva il contenuto della playlist alla fine
+            if (params.use_local_file) {
+                let fileContent = document.getElementById('m3u_file_content').value;
+                
+                // Se il contenuto non è disponibile nel campo nascosto, proviamo a
+                // recuperarlo dal preview mostrato all'utente
+                if (!fileContent && document.getElementById('file_content_preview').style.display !== 'none') {
+                    fileContent = document.getElementById('file_content').textContent;
+                }
+                
+                // Rimuovi il contenuto dalla copia principale dei parametri
+                delete configParams.m3u_file_content;
+                
+                // Aggiungi il contenuto del file come ultima proprietà
+                params.m3u_file_content = fileContent;
+            }
+            
+            // Crea una versione formattata della configurazione
+            let jsonConfig = JSON.stringify(configParams, null, 2);
+            
+            // Se c'è il contenuto del file, aggiungilo alla fine come proprietà separata
+            if (params.use_local_file && params.m3u_file_content) {
+                jsonConfig = jsonConfig.substring(0, jsonConfig.length - 1); // Rimuovi l'ultima parentesi
+                jsonConfig += ',\n  "m3u_file_content": ';
+                
+                // Se il contenuto è molto lungo, mettiamo un commento per maggiore chiarezza
+                if (params.m3u_file_content.length > 500) {
+                    jsonConfig += '// Contenuto della playlist (molto lungo)\n  ';
+                }
+                
+                jsonConfig += JSON.stringify(params.m3u_file_content);
+                jsonConfig += '\n}';
+            }
+            
+            const configBlob = new Blob([jsonConfig], {type: 'application/json'});
             const url = URL.createObjectURL(configBlob);
             const a = document.createElement('a');
             a.href = url;
@@ -222,7 +256,7 @@ const getViewScripts = (protocol, host) => {
             a.click();
             URL.revokeObjectURL(url);
         }
-
+        
         async function restoreConfig(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -249,7 +283,7 @@ const getViewScripts = (protocol, host) => {
         
                             // Salva il contenuto nel file
                             try {
-                                const response = await fetch('/save-local-file', {
+                                const response = await fetch('/upload-playlist', {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json'
@@ -407,7 +441,6 @@ const getViewScripts = (protocol, host) => {
                     const configQueryString = getConfigQueryString();
                     const configBase64 = btoa(configQueryString);
                     window.location.href = \`${protocol}://${host}/\${configBase64}/configure\`;
-        
                 } catch (error) {
                     hideLoader();
                     console.error('Errore:', error);
