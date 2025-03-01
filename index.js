@@ -49,22 +49,18 @@ app.get('/', async (req, res) => {
    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
    const host = req.headers['x-forwarded-host'] || req.get('host');
    
-   // Gestisci il contenuto del file M3U se presente
+   // Gestisci il contenuto del file M3U se presente e use_local_file è true
    if (req.query.use_local_file === 'true') {
-      if (req.query.m3u_file_content) {
-         const localUrl = saveM3UContentToMain(req.query.m3u_file_content);
-         req.query.m3u = localUrl;
-         // Rimuovi i dati grezzi dalla query
-         delete req.query.m3u_file_content;
-      } else {
-         // Se use_local_file è true ma non abbiamo contenuto,
-         // impostiamo comunque l'URL al file fisso
-         const uploadsDir = path.join(__dirname, 'uploads');
-         const filePath = path.join(uploadsDir, 'user_playlist.txt');
-         if (fs.existsSync(filePath)) {
-            req.query.m3u = `file://${filePath}`;
-         }
+      const uploadsDir = path.join(__dirname, 'uploads');
+      const filePath = path.join(uploadsDir, 'user_playlist.txt');
+      
+      if (fs.existsSync(filePath)) {
+         // Imposta l'URL al file locale
+         req.query.m3u = `file://${filePath}`;
       }
+      
+      // Rimuovi eventuali dati grezzi dalla query
+      delete req.query.m3u_file_content;
    }
    
    res.send(renderConfigPage(protocol, host, req.query, config.manifest));
