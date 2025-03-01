@@ -171,6 +171,7 @@ class PlaylistTransformer {
   
       // Se genres è vuoto, usa 'Other Channels'
       if (genres.length === 0) {
+          const genres = new Set(['Altri Canali']);
           genres = ['Altri Canali'];
       }
 
@@ -262,7 +263,6 @@ class PlaylistTransformer {
   async parseM3UContent(content, config) {
       const lines = content.split('\n');
       let currentChannel = null;
-      const genres = new Set(['Undefined']);
   
       let epgUrl = null;
       if (lines[0].includes('url-tvg=')) {
