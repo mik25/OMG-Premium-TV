@@ -8,6 +8,24 @@ const renderConfigPage = (protocol, host, query, manifest) => {
    const m3uDefaultUrl = 'https://github.com/mccoy88f/OMG-Premium-TV/blob/main/tv.png?raw=true';
    const m3uIsDisabled = !fs.existsSync(configPath);
 
+   function readLocalM3UFile() {
+       const fs = require('fs');
+       const path = require('path');
+       const uploadsDir = path.join(__dirname, 'uploads');
+       const filePath = path.join(uploadsDir, 'user_playlist.txt');
+        
+       try {
+           if (fs.existsSync(filePath)) {
+               const content = fs.readFileSync(filePath, 'utf8');
+               return content;
+           }
+       } catch (error) {
+           console.error('Errore nella lettura del file M3U locale:', error);
+       }
+       return '';
+   }
+   const localM3UContent = query.use_local_file === 'true' ? readLocalM3UFile() : '';
+
    return `
        <!DOCTYPE html>
        <html>
