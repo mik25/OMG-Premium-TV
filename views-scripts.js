@@ -102,8 +102,11 @@ const getViewScripts = (protocol, host) => {
                     } else if (key === 'use_local_file' || key === 'include_python_playlist') {
                         // Già gestiti sopra
                     } else if (key === 'm3u' && useLocalFile) {
-                        // Se usiamo file locale, NON aggiungere l'URL M3U
+                        // Non aggiungere l'URL M3U se use_local_file è true
                         // Verrà gestito lato server
+                    } else if (key === 'm3u_file_content') {
+                        // Non includere il contenuto del file nell'URL
+                        // Verrà gestito separatamente
                     } else {
                         params.append(key, value);
                     }
