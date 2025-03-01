@@ -29,12 +29,16 @@ function saveM3UContentToMain(content) {
         fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    // Usa sempre lo stesso nome file
     const fileName = 'user_playlist.txt';
     const filePath = path.join(uploadsDir, fileName);
     
-    // Salva il contenuto nel file
-    fs.writeFileSync(filePath, content);
+    // Usa UTF-8 encoding esplicitamente e gestisci eventuali errori
+    try {
+        fs.writeFileSync(filePath, content, 'utf8');
+        console.log('File salvato correttamente:', filePath);
+    } catch (error) {
+        console.error('Errore nel salvataggio del file:', error);
+    }
     
     // Restituisci l'URL locale da usare
     return `file://${filePath}`;
