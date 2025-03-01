@@ -46,11 +46,21 @@ app.get('/', async (req, res) => {
    const host = req.headers['x-forwarded-host'] || req.get('host');
    
    // Gestisci il contenuto del file M3U se presente
-   if (req.query.use_local_file === 'true' && req.query.m3u_file_content) {
-      const localUrl = saveM3UContentToMain(req.query.m3u_file_content);
-      req.query.m3u = localUrl;
-      // Rimuovi i dati grezzi dalla query
-      delete req.query.m3u_file_content;
+   if (req.query.use_local_file === 'true') {
+      if (req.query.m3u_file_content) {
+         const localUrl = saveM3UContentToMain(req.query.m3u_file_content);
+         req.query.m3u = localUrl;
+         // Rimuovi i dati grezzi dalla query
+         delete req.query.m3u_file_content;
+      } else {
+         // Se use_local_file è true ma non abbiamo contenuto,
+         // impostiamo comunque l'URL al file fisso
+         const uploadsDir = path.join(__dirname, 'uploads');
+         const filePath = path.join(uploadsDir, 'user_playlist.txt');
+         if (fs.existsSync(filePath)) {
+            req.query.m3u = `file://${filePath}`;
+         }
+      }
    }
    
    res.send(renderConfigPage(protocol, host, req.query, config.manifest));
@@ -65,11 +75,21 @@ app.get('/:config/configure', async (req, res) => {
         const decodedConfig = Object.fromEntries(new URLSearchParams(configString));
         
         // Gestisci il contenuto del file M3U se presente
-        if (decodedConfig.use_local_file === 'true' && decodedConfig.m3u_file_content) {
-            const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
-            decodedConfig.m3u = localUrl;
-            // Rimuovi i dati grezzi per risparmiare spazio nell'URL
-            delete decodedConfig.m3u_file_content;
+        if (decodedConfig.use_local_file === 'true') {
+            if (decodedConfig.m3u_file_content) {
+                const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
+                decodedConfig.m3u = localUrl;
+                // Rimuovi i dati grezzi per risparmiare spazio nell'URL
+                delete decodedConfig.m3u_file_content;
+            } else {
+                // Se use_local_file è true ma non abbiamo contenuto,
+                // impostiamo comunque l'URL al file fisso
+                const uploadsDir = path.join(__dirname, 'uploads');
+                const filePath = path.join(uploadsDir, 'user_playlist.txt');
+                if (fs.existsSync(filePath)) {
+                    decodedConfig.m3u = `file://${filePath}`;
+                }
+            }
         }
         
         // Inizializza il generatore Python se configurato
@@ -95,19 +115,27 @@ app.get('/:config/configure', async (req, res) => {
         res.redirect('/');
     }
 });
-
-// Route per il manifest - supporta sia il vecchio che il nuovo sistema
 app.get('/manifest.json', async (req, res) => {
     try {
         const protocol = req.headers['x-forwarded-proto'] || req.protocol;
         const host = req.headers['x-forwarded-host'] || req.get('host');
         
         // Gestisci il contenuto del file M3U se presente
-        if (req.query.use_local_file === 'true' && req.query.m3u_file_content) {
-            const localUrl = saveM3UContentToMain(req.query.m3u_file_content);
-            req.query.m3u = localUrl;
-            // Rimuovi i dati grezzi dalla query
-            delete req.query.m3u_file_content;
+        if (req.query.use_local_file === 'true') {
+            if (req.query.m3u_file_content) {
+                const localUrl = saveM3UContentToMain(req.query.m3u_file_content);
+                req.query.m3u = localUrl;
+                // Rimuovi i dati grezzi dalla query
+                delete req.query.m3u_file_content;
+            } else {
+                // Se use_local_file è true ma non abbiamo contenuto,
+                // impostiamo comunque l'URL al file fisso
+                const uploadsDir = path.join(__dirname, 'uploads');
+                const filePath = path.join(uploadsDir, 'user_playlist.txt');
+                if (fs.existsSync(filePath)) {
+                    req.query.m3u = `file://${filePath}`;
+                }
+            }
         }
         
         const configUrl = `${protocol}://${host}/?${new URLSearchParams(req.query)}`;
@@ -170,6 +198,7 @@ app.get('/manifest.json', async (req, res) => {
     }
 });
 
+
 // Nuova route per il manifest con configurazione codificata
 app.get('/:config/manifest.json', async (req, res) => {
     try {
@@ -179,11 +208,20 @@ app.get('/:config/manifest.json', async (req, res) => {
         const decodedConfig = Object.fromEntries(new URLSearchParams(configString));
 
         // Gestisci il contenuto del file M3U se presente
-        if (decodedConfig.use_local_file === 'true' && decodedConfig.m3u_file_content) {
-            const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
-            decodedConfig.m3u = localUrl;
-            // Rimuovi i dati grezzi per risparmiare spazio
-            delete decodedConfig.m3u_file_content;
+        if (decodedConfig.use_local_file === 'true') {
+            if (decodedConfig.m3u_file_content) {
+                const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
+                decodedConfig.m3u = localUrl;
+                delete decodedConfig.m3u_file_content;
+            } else {
+                // Se use_local_file è true ma non abbiamo contenuto,
+                // impostiamo comunque l'URL al file fisso
+                const uploadsDir = path.join(__dirname, 'uploads');
+                const filePath = path.join(uploadsDir, 'user_playlist.txt');
+                if (fs.existsSync(filePath)) {
+                    decodedConfig.m3u = `file://${filePath}`;
+                }
+            }
         }
 
         if (decodedConfig.m3u && CacheManager.cache.m3uUrl !== decodedConfig.m3u) {
