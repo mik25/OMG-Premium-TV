@@ -61,8 +61,8 @@ function enrichWithDetailedEPG(meta, channelId, userConfig) {
 
 async function metaHandler({ type, id, config: userConfig }) {
     try {
-        
-        if (!userConfig.m3u) {
+        // Verifica che ci sia un URL M3U valido nella configurazione
+        if (!userConfig.m3u && userConfig.use_local_file !== 'true') {
             console.log('❌ URL M3U mancante');
             return { meta: null };
         }
