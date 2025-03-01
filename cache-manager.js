@@ -120,6 +120,7 @@ class CacheManager extends EventEmitter {
                 this.config = {...this.config, ...config};
             }
 
+            // Passa include_python_playlist alla funzione loadAndTransform
             const data = await this.transformer.loadAndTransform(m3uUrl, this.config);
         
             this.cache = {
