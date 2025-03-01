@@ -47,7 +47,8 @@ function cleanNameForImage(name) {
 
 async function catalogHandler({ type, id, extra, config: userConfig }) {
     try {
-        if (!userConfig.m3u) {
+        // Verifica che ci sia un URL M3U valido nella configurazione
+        if (!userConfig.m3u && userConfig.use_local_file !== 'true') {
             console.log('[Handlers] URL M3U mancante nella configurazione');
             return { metas: [], genres: [] };
         }
@@ -192,7 +193,8 @@ function enrichWithEPG(meta, channelId, userConfig) {
 
 async function streamHandler({ id, config: userConfig }) {
     try {
-        if (!userConfig.m3u) {
+        // Verifica che ci sia un URL M3U valido nella configurazione
+        if (!userConfig.m3u && userConfig.use_local_file !== 'true') {
             console.log('M3U URL mancante');
             return { streams: [] };
         }
