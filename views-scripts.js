@@ -87,7 +87,7 @@ const getViewScripts = (protocol, host) => {
             const formData = new FormData(form);
             const params = new URLSearchParams();
             
-            // Gestisci anche lo stato dei checkbox
+            // Gestisci lo stato dei checkbox
             const useLocalFile = document.getElementById('use_local_file').checked;
             params.append('use_local_file', useLocalFile);
             
@@ -100,22 +100,15 @@ const getViewScripts = (protocol, host) => {
                     if (key === 'epg_enabled' || key === 'force_proxy' || key === 'resolver_enabled') {
                         params.append(key, form.elements[key].checked);
                     } else if (key === 'use_local_file' || key === 'include_python_playlist') {
-                        // Gestiti separatamente sopra
+                        // Già gestiti sopra
                     } else if (key === 'm3u' && useLocalFile) {
-                        // Se usiamo il file locale, non inviamo l'URL m3u disabilitato
+                        // Se usiamo file locale, NON aggiungere l'URL M3U
+                        // Verrà gestito lato server
                     } else {
                         params.append(key, value);
                     }
                 }
             });
-            
-            // Aggiungi il contenuto del file se necessario
-            if (useLocalFile) {
-                const fileContent = document.getElementById('m3u_file_content').value;
-                if (fileContent) {
-                    params.append('m3u_file_content', fileContent);
-                }
-            }
             
             return params.toString();
         }
