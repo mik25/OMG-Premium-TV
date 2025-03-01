@@ -205,12 +205,32 @@ const getViewScripts = (protocol, host) => {
                             document.getElementById('m3u_file_content').value = config.m3u_file_content;
                             document.getElementById('file_content').textContent = config.m3u_file_content;
                             document.getElementById('file_content_preview').style.display = 'block';
+        
+                            // Salva il contenuto nel file
+                            try {
+                                const response = await fetch('/save-local-file', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ 
+                                        content: config.m3u_file_content 
+                                    })
+                                });
+        
+                                if (!response.ok) {
+                                    throw new Error('Errore nel salvataggio del file');
+                                }
+                            } catch (saveError) {
+                                console.error('Errore nel salvataggio del file:', saveError);
+                                alert('Errore nel ripristino del file M3U');
+                            }
                         }
                     } else {
                         document.getElementById('use_local_file').checked = false;
                         toggleM3USource(false);
                     }
-                    
+        
                     // Gestisci l'opzione include_python_playlist
                     if (config.include_python_playlist !== undefined) {
                         document.getElementById('include_python_playlist').checked = config.include_python_playlist;
@@ -230,7 +250,7 @@ const getViewScripts = (protocol, host) => {
                             }
                         }
                     }
-
+        
                     if (config.resolver_update_interval) {
                         document.getElementById('resolverUpdateInterval').value = config.resolver_update_interval;
                     
@@ -259,7 +279,7 @@ const getViewScripts = (protocol, host) => {
                         });
                     }
                     
-                    // Ripristina anche i campi Python negli input visibili dell'interfaccia
+                    // Ripristina anche i campi Python
                     if (config.python_script_url) {
                         document.getElementById('pythonScriptUrl').value = config.python_script_url;
         
@@ -317,7 +337,7 @@ const getViewScripts = (protocol, host) => {
                         });
                     }
         
-                    // NUOVO: Avvia esplicitamente la ricostruzione della cache
+                    // Avvia esplicitamente la ricostruzione della cache
                     if (config.m3u) {
                         try {
                             const rebuildResponse = await fetch('/api/rebuild-cache', {
@@ -355,6 +375,7 @@ const getViewScripts = (protocol, host) => {
             };
             reader.readAsText(file);
         }
+
 
         // Funzioni per lo script Python
         function showPythonStatus(data) {
