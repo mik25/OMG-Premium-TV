@@ -18,10 +18,41 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Funzione per salvare il contenuto del file M3U nella cartella principale
+function saveM3UContentToMain(content) {
+    const fs = require('fs');
+    const path = require('path');
+    const uploadsDir = path.join(__dirname, 'uploads');
+    
+    // Assicurati che la directory uploads esista nella cartella principale
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    
+    // Genera un nome file univoco
+    const fileName = `user_playlist_${Date.now()}.txt`;
+    const filePath = path.join(uploadsDir, fileName);
+    
+    // Salva il contenuto nel file
+    fs.writeFileSync(filePath, content);
+    
+    // Restituisci l'URL locale da usare
+    return `file://${filePath}`;
+}
+
 // Route principale - supporta sia il vecchio che il nuovo sistema
 app.get('/', async (req, res) => {
    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
    const host = req.headers['x-forwarded-host'] || req.get('host');
+   
+   // Gestisci il contenuto del file M3U se presente
+   if (req.query.use_local_file === 'true' && req.query.m3u_file_content) {
+      const localUrl = saveM3UContentToMain(req.query.m3u_file_content);
+      req.query.m3u = localUrl;
+      // Rimuovi i dati grezzi dalla query
+      delete req.query.m3u_file_content;
+   }
+   
    res.send(renderConfigPage(protocol, host, req.query, config.manifest));
 });
 
@@ -32,6 +63,14 @@ app.get('/:config/configure', async (req, res) => {
         const host = req.headers['x-forwarded-host'] || req.get('host');
         const configString = Buffer.from(req.params.config, 'base64').toString();
         const decodedConfig = Object.fromEntries(new URLSearchParams(configString));
+        
+        // Gestisci il contenuto del file M3U se presente
+        if (decodedConfig.use_local_file === 'true' && decodedConfig.m3u_file_content) {
+            const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
+            decodedConfig.m3u = localUrl;
+            // Rimuovi i dati grezzi per risparmiare spazio nell'URL
+            delete decodedConfig.m3u_file_content;
+        }
         
         // Inizializza il generatore Python se configurato
         if (decodedConfig.python_script_url) {
@@ -62,12 +101,21 @@ app.get('/manifest.json', async (req, res) => {
     try {
         const protocol = req.headers['x-forwarded-proto'] || req.protocol;
         const host = req.headers['x-forwarded-host'] || req.get('host');
+        
+        // Gestisci il contenuto del file M3U se presente
+        if (req.query.use_local_file === 'true' && req.query.m3u_file_content) {
+            const localUrl = saveM3UContentToMain(req.query.m3u_file_content);
+            req.query.m3u = localUrl;
+            // Rimuovi i dati grezzi dalla query
+            delete req.query.m3u_file_content;
+        }
+        
         const configUrl = `${protocol}://${host}/?${new URLSearchParams(req.query)}`;
         if (req.query.resolver_update_interval) {
             configUrl += `&resolver_update_interval=${encodeURIComponent(req.query.resolver_update_interval)}`;
         }
         if (req.query.m3u && CacheManager.cache.m3uUrl !== req.query.m3u) {
-            await CacheManager.rebuildCache(req.query.m3u);
+            await CacheManager.rebuildCache(req.query.m3u, req.query);
         }
         
         const { genres } = CacheManager.getCachedData();
@@ -130,8 +178,16 @@ app.get('/:config/manifest.json', async (req, res) => {
         const configString = Buffer.from(req.params.config, 'base64').toString();
         const decodedConfig = Object.fromEntries(new URLSearchParams(configString));
 
+        // Gestisci il contenuto del file M3U se presente
+        if (decodedConfig.use_local_file === 'true' && decodedConfig.m3u_file_content) {
+            const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
+            decodedConfig.m3u = localUrl;
+            // Rimuovi i dati grezzi per risparmiare spazio
+            delete decodedConfig.m3u_file_content;
+        }
+
         if (decodedConfig.m3u && CacheManager.cache.m3uUrl !== decodedConfig.m3u) {
-            await CacheManager.rebuildCache(decodedConfig.m3u);
+            await CacheManager.rebuildCache(decodedConfig.m3u, decodedConfig);
         }
         if (decodedConfig.resolver_script) {
             console.log('Inizializzazione Script Resolver dalla configurazione');
@@ -279,7 +335,6 @@ function cleanupTempFolder() {
     if (!fs.existsSync(tempDir)) {
         console.log('Cartella temp non trovata, la creo...');
         fs.mkdirSync(tempDir, { recursive: true });
-        return;
     }
     
     try {
@@ -305,6 +360,13 @@ function cleanupTempFolder() {
         console.log('=== Pulizia cartella temp completata ===\n');
     } catch (error) {
         console.error('❌ Errore nella pulizia della cartella temp:', error.message);
+    }
+    
+    // Assicurati che la directory uploads esista
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+        console.log('Cartella uploads non trovata, la creo...');
+        fs.mkdirSync(uploadsDir, { recursive: true });
     }
 }
 
@@ -349,7 +411,7 @@ function safeParseExtra(extraParam) {
     }
 }
 
-// Per il catalog con config codificato
+// Per il catalog con config codificata
 app.get('/:config/catalog/:type/:id/:extra?.json', async (req, res) => {
     try {
         const configString = Buffer.from(req.params.config, 'base64').toString();
