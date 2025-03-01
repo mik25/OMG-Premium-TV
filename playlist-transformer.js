@@ -405,7 +405,7 @@ class PlaylistTransformer {
           }
   
           // 2. Aggiungi la playlist Python generata SOLO se il flag è attivo
-          if (config.include_python_playlist === 'true') {
+          if (config.include_python_playlist === true || config.include_python_playlist === 'true') {
               const path = require('path');
               const fs = require('fs');
               const PythonRunner = require('./python-runner');
