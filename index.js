@@ -14,9 +14,45 @@ const PythonResolver = require('./python-resolver');
 const fs = require('fs');
 const path = require('path');
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+
+
+app.post('/upload-playlist', (req, res) => {
+    const { content } = req.body;
+    
+    try {
+        const uploadsDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        
+        const filePath = path.join(uploadsDir, 'user_playlist.txt');
+        
+        // Cancella il vecchio file se esiste
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+        
+        // Salva il nuovo file
+        fs.writeFileSync(filePath, content, 'utf8');
+        
+        res.json({ 
+            success: true, 
+            message: 'File caricato correttamente',
+            path: filePath 
+        });
+    } catch (error) {
+        console.error('Errore nel salvataggio del file:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Errore nel salvataggio del file' 
+        });
+    }
+});
 
 // Funzione per salvare il contenuto del file M3U nella cartella principale
 function saveM3UContentToMain(content) {
