@@ -22,6 +22,8 @@ RUN npm install
 RUN mkdir -p /app/temp && \
     chmod 777 /app/temp
 RUN chmod 777 /app
+RUN mkdir -p /app/uploads && \
+    chmod 777 /app/uploads
 
 
 # Expose the port (Hugging Face uses 7860)
