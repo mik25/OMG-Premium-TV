@@ -1,496 +1,498 @@
 const axios = require('axios');
-const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
-const cron = require('node-cron');
+const fs = require('fs');
+const config = require('./config');
 
-class PythonRunner {
-    constructor() {
-        this.scriptPath = path.join(__dirname, 'temp_script.py');
-        this.m3uOutputPath = path.join(__dirname, 'generated_playlist.m3u');
-        this.lastExecution = null;
-        this.lastError = null;
-        this.isRunning = false;
-        this.scriptUrl = null;
-        this.cronJob = null;
-        this.updateInterval = null;
-        
-        // Crea la directory temp se non esiste
-        if (!fs.existsSync(path.join(__dirname, 'temp'))) {
-            fs.mkdirSync(path.join(__dirname, 'temp'));
-        }
-    }
+async function readExternalFile(url) {
+  try {
+      // Gestisci i file locali
+      if (url.startsWith('file://')) {
+          const fs = require('fs');
+          const filePath = url.replace('file://', '');
+          
+          console.log('Lettura file locale:', filePath);
+          
+          if (!fs.existsSync(filePath)) {
+              throw new Error(`File locale non trovato: ${filePath}`);
+          }
+          
+          const content = fs.readFileSync(filePath, 'utf8');
+          
+          if (content.trim().startsWith('#EXTM3U')) {
+              console.log('File M3U diretto trovato (locale)');
+              return [url];
+          }
+          
+          console.log('File lista URL trovato (locale)');
+          return content.split('\n').filter(line => line.trim() !== '');
+      }
+      
+      // Per URL remote, usa il codice esistente
+      const response = await axios.get(url);
+      const content = response.data;
 
-    /**
-     * Scarica lo script Python dall'URL fornito
-     * @param {string} url - L'URL dello script Python
-     * @returns {Promise<boolean>} - true se il download è avvenuto con successo
-     */
-    async downloadScript(url) {
-        try {
-            console.log(`\n=== Download script Python da ${url} ===`);
-            this.scriptUrl = url;
-            
-            const response = await axios.get(url, { responseType: 'text' });
-            fs.writeFileSync(this.scriptPath, response.data);
-            
-            console.log('✓ Script Python scaricato con successo');
-            return true;
-        } catch (error) {
-            console.error('❌ Errore durante il download dello script Python:', error.message);
-            this.lastError = `Errore download: ${error.message}`;
-            return false;
-        }
-    }
+      if (content.trim().startsWith('#EXTM3U')) {
+          console.log('File M3U diretto trovato');
+          return [url];
+      }
 
-    /**
-     * Esegue lo script Python scaricato
-     * @returns {Promise<boolean>} - true se l'esecuzione è avvenuta con successo
-     */
-    async executeScript() {
-        if (this.isRunning) {
-            console.log('⚠️ Un\'esecuzione è già in corso, attendere...');
-            return false;
-        }
-
-        if (!fs.existsSync(this.scriptPath)) {
-            console.error('❌ Script Python non trovato. Eseguire prima downloadScript()');
-            this.lastError = 'Script Python non trovato';
-            return false;
-        }
-
-        try {
-            this.isRunning = true;
-            console.log('\n=== Esecuzione script Python ===');
-            
-            // Elimina eventuali file M3U esistenti prima dell'esecuzione
-            this.cleanupM3UFiles();
-            
-            // Controlla se Python è installato
-            await execAsync('python3 --version').catch(() => 
-                execAsync('python --version')
-            );
-            
-            // Esegui lo script Python
-            const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-            const { stdout, stderr } = await execAsync(`${pythonCmd} ${this.scriptPath}`);
-            
-            if (stderr) {
-                console.warn('⚠️ Warning durante l\'esecuzione:', stderr);
-            }
-            
-            console.log('Output script:', stdout);
-            
-            // Cerca qualsiasi file M3U/M3U8 generato e rinominalo
-            const foundFiles = this.findAllM3UFiles();
-            
-            if (foundFiles.length > 0) {
-                console.log(`✓ Trovati ${foundFiles.length} file M3U/M3U8`);
-                
-                // Prendi il primo file trovato e rinominalo
-                const sourcePath = foundFiles[0];
-                
-                // Se il file destinazione esiste già, eliminalo
-                if (fs.existsSync(this.m3uOutputPath)) {
-                    fs.unlinkSync(this.m3uOutputPath);
-                }
-                
-                // Rinomina o copia il file
-                if (sourcePath !== this.m3uOutputPath) {
-                    fs.copyFileSync(sourcePath, this.m3uOutputPath);
-                    console.log(`✓ File rinominato/copiato da "${sourcePath}" a "${this.m3uOutputPath}"`);
-                    
-                    // Opzionale: elimina il file originale dopo la copia
-                    // fs.unlinkSync(sourcePath);
-                }
-                
-                this.lastExecution = new Date();
-                this.lastError = null;
-                this.isRunning = false;
-                return true;
-            } else {
-                // Prova a cercare percorsi nel testo dell'output
-                const possiblePath = this.findM3UPathFromOutput(stdout);
-                if (possiblePath && fs.existsSync(possiblePath)) {
-                    fs.copyFileSync(possiblePath, this.m3uOutputPath);
-                    console.log(`✓ File M3U trovato in ${possiblePath} e copiato in ${this.m3uOutputPath}`);
-                    this.lastExecution = new Date();
-                    this.lastError = null;
-                    this.isRunning = false;
-                    return true;
-                }
-                
-                console.error('❌ Nessun file M3U trovato dopo l\'esecuzione dello script');
-                this.lastError = 'File M3U non generato dallo script';
-                this.isRunning = false;
-                return false;
-            }
-        } catch (error) {
-            console.error('❌ Errore durante l\'esecuzione dello script Python:', error.message);
-            this.lastError = `Errore esecuzione: ${error.message}`;
-            this.isRunning = false;
-            return false;
-        }
-    }
-
-    /**
-     * Imposta un aggiornamento automatico dello script con la pianificazione specificata
-     * @param {string} timeFormat - Formato orario "HH:MM" o "H:MM"
-     * @returns {boolean} - true se la pianificazione è stata impostata con successo
-     */
-    scheduleUpdate(timeFormat) {
-        // Ferma eventuali pianificazioni esistenti
-        this.stopScheduledUpdates();
-        
-        // Validazione del formato orario
-        if (!timeFormat || !/^\d{1,2}:\d{2}$/.test(timeFormat)) {
-            console.error('❌ Formato orario non valido. Usa HH:MM o H:MM');
-            this.lastError = 'Formato orario non valido. Usa HH:MM o H:MM';
-            return false;
-        }
-        
-        try {
-            // Estrai ore e minuti
-            const [hours, minutes] = timeFormat.split(':').map(Number);
-            
-            if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-                console.error('❌ Orario non valido. Ore: 0-23, Minuti: 0-59');
-                this.lastError = 'Orario non valido. Ore: 0-23, Minuti: 0-59';
-                return false;
-            }
-            
-            // Crea una pianificazione cron
-            // Se è 0:30, esegui ogni 30 minuti
-            // Se è 1:00, esegui ogni ora
-            // Se è 12:00, esegui ogni 12 ore
-            let cronExpression;
-            
-            if (hours === 0) {
-                // Esegui ogni X minuti
-                cronExpression = `*/${minutes} * * * *`;
-                console.log(`✓ Pianificazione impostata: ogni ${minutes} minuti`);
-            } else {
-                // Esegui ogni X ore
-                cronExpression = `${minutes} */${hours} * * *`;
-                console.log(`✓ Pianificazione impostata: ogni ${hours} ore e ${minutes} minuti`);
-            }
-            
-            this.cronJob = cron.schedule(cronExpression, async () => {
-                console.log(`\n=== Esecuzione automatica script Python (${new Date().toLocaleString()}) ===`);
-                const success = await this.executeScript();
-                
-                // Dopo l'esecuzione dello script, aggiorna la cache se necessario
-                if (success) {
-                    try {
-                        // Ottieni le istanze necessarie
-                        const config = require('./config');
-                        const CacheManager = require('./cache-manager')(config);
-                        
-                        // Usa l'URL attualmente configurato nella cache
-                        const currentM3uUrl = CacheManager.cache.m3uUrl;
-                        
-                        if (currentM3uUrl) {
-                            console.log(`\n=== Ricostruzione cache dopo esecuzione automatica dello script ===`);
-                            console.log(`Utilizzo l'URL corrente: ${currentM3uUrl}`);
-                            await CacheManager.rebuildCache(currentM3uUrl);
-                            console.log(`✓ Cache ricostruita con successo dopo esecuzione automatica`);
-                        } else {
-                            console.log(`❌ Nessun URL M3U configurato nella cache, impossibile ricostruire`);
-                        }
-                    } catch (cacheError) {
-                        console.error(`❌ Errore nella ricostruzione della cache dopo esecuzione automatica:`, cacheError);
-                    }
-                }
-            });
-            
-            this.updateInterval = timeFormat;
-            console.log(`✓ Aggiornamento automatico configurato: ${timeFormat}`);
-            return true;
-        } catch (error) {
-            console.error('❌ Errore nella pianificazione:', error.message);
-            this.lastError = `Errore nella pianificazione: ${error.message}`;
-            return false;
-        }
-    }
-    
-    /**
-     * Ferma gli aggiornamenti pianificati
-     */
-    stopScheduledUpdates() {
-        if (this.cronJob) {
-            this.cronJob.stop();
-            this.cronJob = null;
-            this.updateInterval = null;
-            console.log('✓ Aggiornamento automatico fermato');
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Elimina eventuali file M3U/M3U8 esistenti
-     */
-
-    cleanupM3UFiles() {
-        try {
-            // Trova tutti i file M3U e M3U8 nella directory
-            const dirFiles = fs.readdirSync(__dirname);
-            const m3uFiles = dirFiles.filter(file => 
-                file.endsWith('.m3u') || file.endsWith('.m3u8')
-            );
-    
-            // Elimina ogni file M3U/M3U8 trovato
-            m3uFiles.forEach(file => {
-                const fullPath = path.join(__dirname, file);
-                try {
-                    fs.unlinkSync(fullPath);
-                    console.log(`File ${fullPath} eliminato`);
-                } catch (e) {
-                    console.error(`Errore nell'eliminazione del file ${fullPath}:`, e.message);
-                }
-            });
-    
-            console.log(`✓ Eliminati ${m3uFiles.length} file M3U/M3U8`);
-        } catch (error) {
-            console.error('❌ Errore nella pulizia dei file M3U:', error.message);
-        }
-    }
-    /**
-     * Trova tutti i file M3U o M3U8 nella directory
-     * @returns {string[]} - Array di percorsi dei file M3U trovati
-     */
-    findAllM3UFiles() {
-        try {
-            const dirFiles = fs.readdirSync(__dirname);
-            return dirFiles
-                .filter(file => file.endsWith('.m3u') || file.endsWith('.m3u8'))
-                .map(file => path.join(__dirname, file));
-        } catch (error) {
-            console.error('Errore nella ricerca dei file M3U:', error.message);
-            return [];
-        }
-    }
-
-    /**
-     * Cerca un percorso di file M3U nell'output dello script
-     * @param {string} output - L'output dello script Python
-     * @returns {string|null} - Il percorso del file M3U o null se non trovato
-     */
-    findM3UPathFromOutput(output) {
-        // Cerca percorsi che terminano con .m3u o .m3u8
-        const m3uPathRegex = /[\w\/\\\.]+\.m3u8?\b/g;
-        const matches = output.match(m3uPathRegex);
-        
-        if (matches && matches.length > 0) {
-            return matches[0];
-        }
-        
-        return null;
-    }
-
-    /**
-     * Legge il contenuto del file M3U generato
-     * @returns {string|null} - Il contenuto del file M3U o null se non esiste
-     */
-// Aggiungi questa funzione al file python-runner.js, subito prima di getM3UContent()
-
-/**
- * Aggiunge il canale speciale per la rigenerazione della playlist alla fine del file M3U
- * @returns {boolean} - true se l'operazione è avvenuta con successo
- */
-    addRegenerateChannel() {
-        try {
-            if (!fs.existsSync(this.m3uOutputPath)) {
-                console.error('❌ File M3U non trovato, impossibile aggiungere canale di rigenerazione');
-                return false;
-            }
-    
-            console.log('Aggiunta canale di rigenerazione al file M3U...');
-            
-            // Leggi il contenuto attuale del file
-            const currentContent = fs.readFileSync(this.m3uOutputPath, 'utf8');
-            
-            // Prepara l'entry del canale speciale
-
-            const specialChannel = `
-#EXTINF:-1 tvg-id="rigeneraplaylistpython" tvg-name="Rigenera Playlist Python" tvg-logo="https://raw.githubusercontent.com/mccoy88f/OMG-TV-Stremio-Addon/refs/heads/main/tv.png" group-title="~SETTINGS~",Rigenera Playlist Python
-http://127.0.0.1/regenerate`;
-            
-            // Verifica se il canale già esiste nel file
-            if (currentContent.includes('tvg-id="rigeneraplaylistpython"')) {
-                console.log('Il canale di rigenerazione è già presente nel file M3U');
-                return true;
-            }
-            
-            // Aggiungi il canale speciale alla fine del file
-            fs.appendFileSync(this.m3uOutputPath, specialChannel);
-            console.log('✓ Canale di rigenerazione aggiunto con successo al file M3U');
-            
-            return true;
-        } catch (error) {
-            console.error('❌ Errore nell\'aggiunta del canale di rigenerazione:', error.message);
-            return false;
-        }
-    }
-    
-    // Modifica la funzione executeScript per chiamare addRegenerateChannel
-    async executeScript() {
-        if (this.isRunning) {
-            console.log('⚠️ Un\'esecuzione è già in corso, attendere...');
-            return false;
-        }
-    
-        if (!fs.existsSync(this.scriptPath)) {
-            console.error('❌ Script Python non trovato. Eseguire prima downloadScript()');
-            this.lastError = 'Script Python non trovato';
-            return false;
-        }
-    
-        try {
-            this.isRunning = true;
-            console.log('\n=== Esecuzione script Python ===');
-            
-            // Elimina eventuali file M3U esistenti prima dell'esecuzione
-            this.cleanupM3UFiles();
-            
-            // Controlla se Python è installato
-            await execAsync('python3 --version').catch(() => 
-                execAsync('python --version')
-            );
-            
-            // Esegui lo script Python
-            const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-            const { stdout, stderr } = await execAsync(`${pythonCmd} ${this.scriptPath}`);
-            
-            if (stderr) {
-                console.warn('⚠️ Warning durante l\'esecuzione:', stderr);
-            }
-            
-            console.log('Output script:', stdout);
-            
-            // Cerca qualsiasi file M3U/M3U8 generato e rinominalo
-            const foundFiles = this.findAllM3UFiles();
-            
-            if (foundFiles.length > 0) {
-                console.log(`✓ Trovati ${foundFiles.length} file M3U/M3U8`);
-                
-                // Prendi il primo file trovato e rinominalo
-                const sourcePath = foundFiles[0];
-                
-                // Se il file destinazione esiste già, eliminalo
-                if (fs.existsSync(this.m3uOutputPath)) {
-                    fs.unlinkSync(this.m3uOutputPath);
-                }
-                
-                // Rinomina o copia il file
-                if (sourcePath !== this.m3uOutputPath) {
-                    fs.copyFileSync(sourcePath, this.m3uOutputPath);
-                    console.log(`✓ File rinominato/copiato da "${sourcePath}" a "${this.m3uOutputPath}"`);
-                    
-                    // Opzionale: elimina il file originale dopo la copia
-                    // fs.unlinkSync(sourcePath);
-                }
-                
-                // Aggiungi il canale di rigenerazione
-                this.addRegenerateChannel();
-                
-                this.lastExecution = new Date();
-                this.lastError = null;
-                this.isRunning = false;
-                return true;
-            } else {
-                // Prova a cercare percorsi nel testo dell'output
-                const possiblePath = this.findM3UPathFromOutput(stdout);
-                if (possiblePath && fs.existsSync(possiblePath)) {
-                    fs.copyFileSync(possiblePath, this.m3uOutputPath);
-                    console.log(`✓ File M3U trovato in ${possiblePath} e copiato in ${this.m3uOutputPath}`);
-                    
-                    // Aggiungi il canale di rigenerazione
-                    this.addRegenerateChannel();
-                    
-                    this.lastExecution = new Date();
-                    this.lastError = null;
-                    this.isRunning = false;
-                    return true;
-                }
-                
-                console.error('❌ Nessun file M3U trovato dopo l\'esecuzione dello script');
-                this.lastError = 'File M3U non generato dallo script';
-                this.isRunning = false;
-                return false;
-            }
-        } catch (error) {
-            console.error('❌ Errore durante l\'esecuzione dello script Python:', error.message);
-            this.lastError = `Errore esecuzione: ${error.message}`;
-            this.isRunning = false;
-            return false;
-        }
-    }
-    
-    getM3UContent() {
-        try {
-            if (fs.existsSync(this.m3uOutputPath)) {
-                return fs.readFileSync(this.m3uOutputPath, 'utf8');
-            }
-            
-            // Se il file standard non esiste, cerca altri file M3U
-            const files = this.findAllM3UFiles();
-            if (files.length > 0) {
-                return fs.readFileSync(files[0], 'utf8');
-            }
-            
-            return null;
-        } catch (error) {
-            console.error('❌ Errore nella lettura del file M3U:', error.message);
-            return null;
-        }
-    }
-
-    /**
-     * Restituisce il percorso del file M3U generato
-     * @returns {string} - Il percorso del file M3U
-     */
-    getM3UPath() {
-        return this.m3uOutputPath;
-    }
-
-    /**
-     * Restituisce lo stato attuale
-     * @returns {Object} - Lo stato attuale
-     */
-    getStatus() {
-        const m3uFiles = this.findAllM3UFiles();
-        
-        return {
-            isRunning: this.isRunning,
-            lastExecution: this.lastExecution ? this.formatDate(this.lastExecution) : 'Mai',
-            lastError: this.lastError,
-            m3uExists: fs.existsSync(this.m3uOutputPath),
-            m3uFiles: m3uFiles.length,
-            scriptExists: fs.existsSync(this.scriptPath),
-            scriptUrl: this.scriptUrl,
-            updateInterval: this.updateInterval,
-            scheduledUpdates: this.cronJob !== null
-        };
-    }
-
-    /**
-     * Formatta una data in formato italiano
-     * @param {Date} date - La data da formattare
-     * @returns {string} - La data formattata
-     */
-    formatDate(date) {
-        return date.toLocaleString('it-IT', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-    }
+      console.log('File lista URL trovato');
+      return content.split('\n').filter(line => line.trim() !== '');
+  } catch (error) {
+      console.error('Errore nella lettura del file:', error);
+      throw error;
+  }
 }
 
-module.exports = new PythonRunner();
+class PlaylistTransformer {
+  constructor() {
+      this.remappingRules = new Map();
+      this.channelsMap = new Map();
+      this.channelsWithoutStreams = [];
+  }
+
+  normalizeId(id) {
+      return id?.toLowerCase().replace(/[^\w.]/g, '').trim() || '';
+  }
+
+  cleanChannelName(name) {
+      return name
+          .replace(/[\(\[].*?[\)\]]/g, '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, '');
+  }
+
+  async loadRemappingRules(config) {
+      console.log('Remapper path:', config?.remapper_path);
+      const defaultPath = path.join(__dirname, 'link.epg.remapping');
+      const remappingPath = config?.remapper_path || defaultPath;
+    
+      try {
+          let content;
+          if (remappingPath.startsWith('http')) {
+              try {
+                  const response = await axios.get(remappingPath);
+                  content = response.data;
+                  console.log('✓ Download remapping remoto completato');
+              } catch (downloadError) {
+                  console.error('❌ Download remoto fallito:', downloadError.message);
+                  if (downloadError.response) {
+                      console.error('Status:', downloadError.response.status);
+                      console.error('Headers:', downloadError.response.headers);
+                  }
+                  console.log('Uso fallback locale:', defaultPath);
+                  content = await fs.promises.readFile(defaultPath, 'utf8');
+              }
+          } else {
+              content = await fs.promises.readFile(remappingPath, 'utf8');
+          }
+
+          let ruleCount = 0;
+          content.split('\n').forEach(line => {
+              line = line.trim();
+              if (!line || line.startsWith('#')) return;
+              const [m3uId, epgId] = line.split('=').map(s => s.trim());
+              if (m3uId && epgId) {
+                  this.remappingRules.set(this.normalizeId(m3uId), this.normalizeId(epgId));
+                  ruleCount++;
+              }
+          });
+
+          console.log(`✓ Caricate ${ruleCount} regole da ${remappingPath}`);
+      } catch (error) {
+          console.error('❌ Errore finale remapping:', error.message);
+      }
+  }
+
+  parseVLCOpts(lines, currentIndex, extinf) {
+      let i = currentIndex;
+      
+      // Debug per vedere il contenuto delle linee
+      if (extinf.includes('tvg-name')) {
+          const channelName = extinf.match(/tvg-name="([^"]+)"/) 
+              ? extinf.match(/tvg-name="([^"]+)"/)[1]
+              : 'Canale sconosciuto';
+      }
+      
+      const extinfHeaders = {};
+      const extinfopts = extinf.match(/http-[^=]+=["']([^"']+)/g);
+      if (extinfopts) {
+          extinfopts.forEach(opt => {
+              const [key, value] = opt.split('=');
+              extinfHeaders[key.replace('http-', '')] = value.replace(/["']/g, '');
+          });
+      }
+
+      const vlcHeaders = {};
+      while (i < lines.length && lines[i].startsWith('#EXTVLCOPT:')) {
+          const opt = lines[i].substring('#EXTVLCOPT:'.length).trim();
+          const [key, ...value] = opt.split('=');
+          const headerKey = key.replace('http-', '');
+          vlcHeaders[headerKey] = value.join('=');
+          i++;
+      }
+
+      const httpHeaders = {};
+      if (i < lines.length && lines[i].startsWith('#EXTHTTP:')) {
+          try {
+              const parsed = JSON.parse(lines[i].substring('#EXTHTTP:'.length));
+              Object.assign(httpHeaders, parsed);
+              i++;
+          } catch (e) {
+              console.error('Error parsing EXTHTTP:', e);
+          }
+      }
+
+      const finalHeaders = {
+          ...extinfHeaders,
+          ...vlcHeaders,
+          ...httpHeaders
+      };
+
+      // Unifica user-agent con varie priorità
+      finalHeaders['User-Agent'] = httpHeaders['User-Agent'] || httpHeaders['user-agent'] ||
+                                  vlcHeaders['user-agent'] || extinfHeaders['user-agent'] ||
+                                  config.defaultUserAgent;
+
+      // Normalizza referrer/referer - preferisci 'referrer' come nome finale
+      if (vlcHeaders['referrer']) {
+          finalHeaders['referrer'] = vlcHeaders['referrer'];
+      } else if (vlcHeaders['referer']) {
+          finalHeaders['referrer'] = vlcHeaders['referer'];
+      }
+      delete finalHeaders['referer'];
+
+      // Normalizza origin
+      if (vlcHeaders['origin']) {
+          finalHeaders['origin'] = vlcHeaders['origin'];
+      }
+
+      // Debug degli header finali
+
+      return { headers: finalHeaders, nextIndex: i };
+  }
+  
+  parseChannelFromLine(line, headers, config) {
+      const metadata = line.substring(8).trim();
+      const tvgData = {};
+  
+      const tvgMatches = metadata.match(/([a-zA-Z-]+)="([^"]+)"/g) || [];
+      tvgMatches.forEach(match => {
+          const [key, value] = match.split('=');
+          const cleanKey = key.replace('tvg-', '');
+          tvgData[cleanKey] = value.replace(/"/g, '');
+      });
+
+      const groupMatch = metadata.match(/group-title="([^"]+)"/);
+      let genres = [];
+      if (groupMatch) {
+          genres = groupMatch[1].split(';')
+              .map(g => g.trim())
+              .filter(g => g !== '' && g.toLowerCase() !== 'undefined');
+      }
+  
+      // Se genres è vuoto, usa 'Other Channels'
+      if (genres.length === 0) {
+          genres = ['Altri Canali'];
+      }
+
+      const nameParts = metadata.split(',');
+      const name = nameParts[nameParts.length - 1].trim();
+
+      if (!tvgData.id) {
+          const suffix = config?.id_suffix || '';
+          tvgData.id = this.cleanChannelName(name) + (suffix ? `.${suffix}` : '');
+      }
+
+      return {
+          name,
+          group: genres,
+          tvg: tvgData,
+          headers
+      };
+  }
+
+  getRemappedId(channel) {
+      const originalId = channel.tvg.id;
+      const suffix = config?.id_suffix || ''; // Ottieni il suffisso dalla configurazione
+      const normalizedId = this.normalizeId(originalId) + (suffix ? `.${suffix}` : ''); // Aggiungi il suffisso all'ID normalizzato
+      const remappedId = this.remappingRules.get(normalizedId);
+
+      if (remappedId) {
+          return this.normalizeId(remappedId);
+      }
+
+      return normalizedId; // Restituisci l'ID normalizzato con il suffisso
+  }
+
+  createChannelObject(channel, channelId) {
+      const name = channel.tvg?.name || channel.name;
+      const cleanName = name.replace(/\s*\(.*?\)\s*/g, '').trim();
+      const suffix = config?.id_suffix || ''; // Ottieni il suffisso dalla configurazione
+      const finalChannelId = channelId + (suffix ? `.${suffix}` : ''); // Aggiungi il suffisso all'ID del canale
+
+      return {
+          id: `tv|${finalChannelId}`, // Usa l'ID con il suffisso
+          type: 'tv',
+          name: cleanName,
+          genre: channel.group,
+          posterShape: 'square',
+          poster: channel.tvg?.logo,
+          background: channel.tvg?.logo,
+          logo: channel.tvg?.logo,
+          description: `Canale: ${cleanName} - ID: ${finalChannelId}`,
+          runtime: 'LIVE',
+          behaviorHints: {
+              defaultVideoId: `tv|${finalChannelId}`,
+              isLive: true
+          },
+          streamInfo: {
+              urls: [],
+              tvg: {
+                  ...channel.tvg,
+                  id: finalChannelId,
+                  name: cleanName
+              }
+          }
+      };
+  }
+
+  addStreamToChannel(channel, url, name, genres, headers) {
+      if (genres) {
+          genres.forEach(newGenre => {
+              if (!channel.genre.includes(newGenre)) {
+                  channel.genre.push(newGenre);
+              }
+          });
+      }
+
+      if (url === null || url.toLowerCase() === 'null') {
+          channel.streamInfo.urls.push({
+              url: 'https://static.vecteezy.com/system/resources/previews/001/803/236/mp4/no-signal-bad-tv-free-video.mp4',
+              name: 'Nessuno flusso presente nelle playlist m3u',
+              headers
+          });
+      } else {
+          channel.streamInfo.urls.push({
+              url,
+              name,
+              headers
+          });
+      }
+  }
+  
+  async parseM3UContent(content, config) {
+      const lines = content.split('\n');
+      let currentChannel = null;
+      const genres = new Set(['Undefined']);
+  
+      let epgUrl = null;
+      if (lines[0].includes('url-tvg=')) {
+          const match = lines[0].match(/url-tvg="([^"]+)"/);
+          if (match) {
+              epgUrl = match[1].split(',').map(url => url.trim());
+              console.log('URL EPG trovati nella playlist:', epgUrl);
+          }
+      }
+  
+      for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+      
+          if (line.startsWith('#EXTINF:')) {
+              const { headers, nextIndex } = this.parseVLCOpts(lines, i + 1, line);
+              i = nextIndex - 1;
+              currentChannel = this.parseChannelFromLine(line, headers, config);
+
+              // Verifica la presenza di User-Agent, Referrer e Origin
+              const channelName = currentChannel.tvg?.name || currentChannel.name;
+
+
+          } else if ((line.startsWith('http') || line.toLowerCase() === 'null') && currentChannel) {
+              const remappedId = this.getRemappedId(currentChannel);
+              const normalizedId = this.normalizeId(remappedId);
+
+              if (!this.channelsMap.has(normalizedId)) {
+                  const channelObj = this.createChannelObject(currentChannel, remappedId);
+                  this.channelsMap.set(normalizedId, channelObj);
+                  currentChannel.group.forEach(genre => genres.add(genre));
+              }
+
+              const channelObj = this.channelsMap.get(normalizedId);
+              this.addStreamToChannel(channelObj, line, currentChannel.name, currentChannel.group, currentChannel.headers);
+  
+              currentChannel = null;
+          }
+      }
+
+      this.channelsWithoutStreams = [];
+      for (const [id, channel] of this.channelsMap.entries()) {
+          if (channel.streamInfo.urls.length === 0) {
+              this.channelsWithoutStreams.push(channel.name);
+          }
+      }
+
+      if (this.channelsWithoutStreams.length > 0) {
+          console.warn(`⚠️ Canali senza flussi riproducibili: ${this.channelsWithoutStreams.length}`);
+          console.log('\n=== Canali senza flussi ===');
+          this.channelsWithoutStreams.forEach(name => {
+              console.log(`${name}`);
+          });
+          console.log('========================\n');
+      }
+
+      const channelsWithOnlyDummy = [];
+      for (const [id, channel] of this.channelsMap.entries()) {
+          if (channel.streamInfo.urls.length === 1 && 
+              channel.streamInfo.urls[0].name === 'Nessuno flusso presente nelle playlist m3u') {
+              channelsWithOnlyDummy.push(channel.name);
+          }
+      }
+
+      if (channelsWithOnlyDummy.length > 0) {
+          console.log('\n=== Canali con solo flusso dummy ===');
+          channelsWithOnlyDummy.forEach(name => {
+              console.log(`${name}`);
+          });
+          console.log(`✓ Totale canali con solo flusso dummy: ${channelsWithOnlyDummy.length}`);
+          console.log('================================\n');
+      }
+
+      return {
+          genres: Array.from(genres),
+          epgUrl
+      };
+  }
+
+  async loadAndTransform(url, config = {}) {
+      try {
+          await this.loadRemappingRules(config);
+          
+          // Raccogli le URL delle playlist
+          let playlistUrls = [];
+          
+          // 1. Gestisci URL principale
+          if (url.startsWith('file://')) {
+              // Logica per file locale
+              const fs = require('fs');
+              const filePath = url.replace('file://', '');
+              
+              console.log('\n=== Lettura file locale ===');
+              console.log('Percorso:', filePath);
+              
+              if (!fs.existsSync(filePath)) {
+                  throw new Error(`File locale non trovato: ${filePath}`);
+              }
+              
+              const content = fs.readFileSync(filePath, 'utf8');
+              
+              if (content.trim().startsWith('#EXTM3U')) {
+                  playlistUrls = [url];
+              } else {
+                  // Se contiene liste di URL, usa quelli
+                  playlistUrls = content.split('\n')
+                      .filter(line => line.trim() && (line.trim().startsWith('http') || line.trim().startsWith('https')));
+                      
+                  console.log(`✓ Trovate ${playlistUrls.length} URL nel file locale`);
+              }
+          } else {
+              // Usa il metodo esistente per URL remote
+              const response = await axios.get(url);
+              const content = response.data;
+              playlistUrls = content.startsWith('#EXTM3U') 
+                  ? [url] 
+                  : content.split('\n').filter(line => line.trim() && line.startsWith('http'));
+          }
+
+          // 2. Aggiungi la playlist Python generata se richiesto e disponibile
+          if (config.include_python_playlist === 'true') {
+              const path = require('path');
+              const fs = require('fs');
+              const PythonRunner = require('./python-runner');
+              
+              const pythonM3UPath = PythonRunner.getM3UPath();
+              
+              if (fs.existsSync(pythonM3UPath)) {
+                  console.log('✓ Aggiunta playlist Python generata:', pythonM3UPath);
+                  playlistUrls.push(`file://${pythonM3UPath}`);
+              } else {
+                  console.log('⚠️ Playlist Python richiesta ma non trovata');
+              }
+          }
+
+          console.log('\n=== Inizio Processamento Playlist ===');
+          console.log('Playlist da processare:', playlistUrls.length);
+
+          const allGenres = [];
+          const allEpgUrls = new Set();
+          
+          for (const playlistUrl of playlistUrls) {
+              console.log('\nProcesso playlist:', playlistUrl);
+              
+              try {
+                  let playlistData;
+                  
+                  // Gestisci URL locali e remote
+                  if (playlistUrl.startsWith('file://')) {
+                      const fs = require('fs');
+                      const filePath = playlistUrl.replace('file://', '');
+                      playlistData = fs.readFileSync(filePath, 'utf8');
+                  } else {
+                      const playlistResponse = await axios.get(playlistUrl);
+                      playlistData = playlistResponse.data;
+                  }
+                  
+                  const result = await this.parseM3UContent(playlistData, config);
+                  
+                  result.genres.forEach(genre => {
+                      if (!allGenres.includes(genre)) {
+                          allGenres.push(genre);
+                      }
+                  });
+                  
+                  if (result.epgUrl) {
+                      if (Array.isArray(result.epgUrl)) {
+                          result.epgUrl.forEach(url => allEpgUrls.add(url));
+                      } else {
+                          allEpgUrls.add(result.epgUrl);
+                      }
+                  }
+              } catch (playlistError) {
+                  console.error(`❌ Errore nel processamento della playlist ${playlistUrl}:`, playlistError.message);
+              }
+          }
+
+          const finalResult = {
+              genres: allGenres,
+              channels: Array.from(this.channelsMap.values()),
+              epgUrls: Array.from(allEpgUrls)
+          };
+
+          finalResult.channels.forEach(channel => {
+              if (channel.streamInfo.urls.length > 1) {
+                  channel.streamInfo.urls = channel.streamInfo.urls.filter(
+                      stream => stream.name !== 'Nessuno flusso presente nelle playlist m3u'
+                  );
+              }
+          });
+
+          console.log('\nRiepilogo Processamento:');
+          console.log(`✓ Totale canali processati: ${finalResult.channels.length}`);
+          console.log(`✓ Totale generi trovati: ${finalResult.genres.length}`);
+          if (allEpgUrls.size > 0) {
+              console.log(`✓ URL EPG trovati: ${allEpgUrls.size}`);
+          }
+          console.log('=== Processamento Completato ===\n');
+
+          this.channelsMap.clear();
+          this.channelsWithoutStreams = [];
+          return finalResult;
+
+      } catch (error) {
+          console.error('❌ Errore playlist:', error.message);
+          throw error;
+      }
+  }
+}
+
+module.exports = PlaylistTransformer;
