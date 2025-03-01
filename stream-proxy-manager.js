@@ -107,18 +107,27 @@ class StreamProxyManager {
     }
 
     async buildProxyUrl(streamUrl, headers = {}, userConfig = {}) {
-        if (!userConfig.proxy || !userConfig.proxy_pwd || !streamUrl || typeof streamUrl !== 'string') {
-            console.warn('⚠️ buildProxyUrl: Parametri mancanti o non validi');
+        if (!streamUrl || typeof streamUrl !== 'string') {
+            console.warn('⚠️ buildProxyUrl: URL stream mancante o non valido');
             return null;
         }
-    
+
         // Determina il tipo di proxy da utilizzare
         const proxyType = userConfig.proxy_type || 'mediaflow'; // Default: MediaFlow
         
         if (proxyType === 'smallprox') {
+            // SmallProx richiede solo l'URL del proxy, non la password
+            if (!userConfig.proxy) {
+                console.warn('⚠️ buildProxyUrl: URL proxy mancante');
+                return null;
+            }
             return this.buildSmallProxUrl(streamUrl, headers, userConfig);
         } else {
-            // MediaFlow proxy (comportamento default)
+            // MediaFlow proxy (comportamento default) richiede sia URL che password
+            if (!userConfig.proxy || !userConfig.proxy_pwd) {
+                console.warn('⚠️ buildProxyUrl: Parametri proxy MediaFlow mancanti');
+                return null;
+            }
             return this.buildMediaFlowProxyUrl(streamUrl, headers, userConfig);
         }
     }
@@ -173,11 +182,8 @@ class StreamProxyManager {
         
         // Parametro URL obbligatorio
         params.set('url', streamUrl);
-    
-        // Token di autorizzazione (se disponibile)
-        if (userConfig.proxy_pwd) {
-            params.set('token', userConfig.proxy_pwd);
-        }
+        
+        // SmallProx non richiede password, quindi non includiamo api_password
         
         // Aggiungi gli headers come parametri con prefisso header_
         const userAgent = headers['User-Agent'] || headers['user-agent'] || config.defaultUserAgent || 'Mozilla/5.0';
@@ -224,8 +230,16 @@ class StreamProxyManager {
         }
         
         // Se il proxy non è configurato, interrompe l'elaborazione
-        if (!userConfig.proxy || !userConfig.proxy_pwd) {
-            console.log('⚠️ Proxy non configurato per:', input.name);
+        const proxyType = userConfig.proxy_type || 'mediaflow';
+        
+        if (!userConfig.proxy) {
+            console.log('⚠️ URL Proxy non configurato per:', input.name);
+            return [];
+        }
+        
+        // MediaFlow richiede password, SmallProx no
+        if (proxyType !== 'smallprox' && !userConfig.proxy_pwd) {
+            console.log('⚠️ Password Proxy non configurata per MediaFlow:', input.name);
             return [];
         }
     
