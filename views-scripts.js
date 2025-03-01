@@ -28,21 +28,88 @@ const getViewScripts = (protocol, host) => {
             toggle.textContent = content.classList.contains('show') ? '▲' : '▼';
         }
 
+        // Funzione per gestire lo switch tra URL e file locale
+        function toggleM3USource(useLocalFile) {
+            const urlInput = document.getElementById('m3u_url_input');
+            const fileSection = document.getElementById('m3u_file_section');
+            
+            if (useLocalFile) {
+                urlInput.disabled = true;
+                urlInput.required = false;
+                fileSection.style.display = 'block';
+            } else {
+                urlInput.disabled = false;
+                urlInput.required = true;
+                fileSection.style.display = 'none';
+                // Reset il campo file
+                document.getElementById('m3u_file_input').value = '';
+                document.getElementById('file_content_preview').style.display = 'none';
+                document.getElementById('m3u_file_content').value = '';
+            }
+        }
+
+        // Funzione per gestire il caricamento del file
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('m3u_file_input');
+            if (fileInput) {
+                fileInput.addEventListener('change', handleFileUpload);
+            }
+        });
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                
+                // Mostra anteprima del contenuto
+                document.getElementById('file_content').textContent = content;
+                document.getElementById('file_content_preview').style.display = 'block';
+                
+                // Salva il contenuto in un campo nascosto per il form
+                document.getElementById('m3u_file_content').value = content;
+            };
+            
+            reader.readAsText(file);
+        }
+
         // Funzioni per la gestione della configurazione
         function getConfigQueryString() {
             const form = document.getElementById('configForm');
             const formData = new FormData(form);
             const params = new URLSearchParams();
             
+            // Gestisci anche lo stato dei checkbox
+            const useLocalFile = document.getElementById('use_local_file').checked;
+            params.append('use_local_file', useLocalFile);
+            
+            const includePythonPlaylist = document.getElementById('include_python_playlist').checked;
+            params.append('include_python_playlist', includePythonPlaylist);
+            
             formData.forEach((value, key) => {
-                if (value || key === 'epg_enabled' || key === 'force_proxy' || key === 'resolver_enabled') {
+                if (value || key === 'epg_enabled' || key === 'force_proxy' || key === 'resolver_enabled' || 
+                   key === 'use_local_file' || key === 'include_python_playlist') {
                     if (key === 'epg_enabled' || key === 'force_proxy' || key === 'resolver_enabled') {
                         params.append(key, form.elements[key].checked);
+                    } else if (key === 'use_local_file' || key === 'include_python_playlist') {
+                        // Gestiti separatamente sopra
+                    } else if (key === 'm3u' && useLocalFile) {
+                        // Se usiamo il file locale, non inviamo l'URL m3u disabilitato
                     } else {
                         params.append(key, value);
                     }
                 }
             });
+            
+            // Aggiungi il contenuto del file se necessario
+            if (useLocalFile) {
+                const fileContent = document.getElementById('m3u_file_content').value;
+                if (fileContent) {
+                    params.append('m3u_file_content', fileContent);
+                }
+            }
             
             return params.toString();
         }
@@ -94,6 +161,14 @@ const getViewScripts = (protocol, host) => {
             params.epg_enabled = params.epg_enabled === 'true';
             params.force_proxy = params.force_proxy === 'true';
             params.resolver_enabled = params.resolver_enabled === 'true';
+            params.use_local_file = params.use_local_file === 'true';
+            params.include_python_playlist = params.include_python_playlist === 'true';
+            
+            // Se stiamo usando un file locale, salva anche il contenuto nel backup
+            if (params.use_local_file) {
+                params.m3u_file_content = document.getElementById('m3u_file_content').value;
+            }
+            
             params.resolver_update_interval = 
                 document.getElementById('resolverUpdateInterval').value || 
                 document.querySelector('input[name="resolver_update_interval"]')?.value || 
@@ -120,7 +195,33 @@ const getViewScripts = (protocol, host) => {
                     const config = JSON.parse(e.target.result);
         
                     const form = document.getElementById('configForm');
+                    
+                    // Gestisci l'opzione use_local_file
+                    if (config.use_local_file) {
+                        document.getElementById('use_local_file').checked = true;
+                        toggleM3USource(true);
+                        
+                        // Se abbiamo anche il contenuto del file, ripristinalo
+                        if (config.m3u_file_content) {
+                            document.getElementById('m3u_file_content').value = config.m3u_file_content;
+                            document.getElementById('file_content').textContent = config.m3u_file_content;
+                            document.getElementById('file_content_preview').style.display = 'block';
+                        }
+                    } else {
+                        document.getElementById('use_local_file').checked = false;
+                        toggleM3USource(false);
+                    }
+                    
+                    // Gestisci l'opzione include_python_playlist
+                    if (config.include_python_playlist !== undefined) {
+                        document.getElementById('include_python_playlist').checked = config.include_python_playlist;
+                    }
+                    
+                    // Continua con il resto del ripristino delle altre impostazioni
                     for (const [key, value] of Object.entries(config)) {
+                        // Ignora le proprietà speciali gestite separatamente
+                        if (key === 'use_local_file' || key === 'm3u_file_content' || key === 'include_python_playlist') continue;
+                        
                         const input = form.elements[key];
                         if (input) {
                             if (input.type === 'checkbox') {
@@ -519,12 +620,6 @@ const getViewScripts = (protocol, host) => {
         window.addEventListener('DOMContentLoaded', function() {
             initializePythonFields();
             initializeResolverFields();
-        });
-        
-        // Aggiungi questa chiamata all'evento DOMContentLoaded
-        window.addEventListener('DOMContentLoaded', function() {
-            initializePythonFields();
-            initializeResolverFields(); // Aggiungi questa riga
         });
 
         async function downloadResolverScript() {
