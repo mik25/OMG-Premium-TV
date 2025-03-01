@@ -23,6 +23,8 @@ RUN mkdir -p /app/data && chown -R node:node /app/data
 # Crea la directory temp e imposta i permessi (come nel Dockerfile di Hugging Face)
 RUN mkdir -p /app/temp && \
     chmod 777 /app/temp
+RUN mkdir -p /app/uploads && \
+    chmod 777 /app/uploads
 
 # Esponi la porta 10000 (usata dal server)
 EXPOSE 10000
