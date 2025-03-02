@@ -62,11 +62,20 @@ const getViewScripts = (protocol, host) => {
             const file = event.target.files[0];
             if (!file) return;
             
+            showLoader('Caricamento playlist in corso...');
+            
             const reader = new FileReader();
             reader.onload = async function(e) {
                 const content = e.target.result;
                 
                 try {
+                    // Mostra anteprima del contenuto
+                    document.getElementById('file_content').textContent = content;
+                    document.getElementById('file_content_preview').style.display = 'block';
+                    
+                    // Salva il contenuto in un campo nascosto per il form
+                    document.getElementById('m3u_file_content').value = content;
+                    
                     // Richiedi la cancellazione del vecchio file e il caricamento del nuovo
                     const response = await fetch('/upload-playlist', {
                         method: 'POST',
@@ -75,33 +84,35 @@ const getViewScripts = (protocol, host) => {
                         },
                         body: JSON.stringify({ 
                             content: content,
-                            filename: file.name
+                            timestamp: Date.now() // Aggiungiamo un timestamp per evitare caching
                         })
                     });
         
                     const result = await response.json();
         
                     if (result.success) {
-                        // Mostra anteprima del contenuto
-                        document.getElementById('file_content').textContent = content;
-                        document.getElementById('file_content_preview').style.display = 'block';
+                        // Attendiamo un po' per essere sicuri che il file sia stato salvato e processato
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                         
-                        // Salva il contenuto in un campo nascosto per il form
-                        document.getElementById('m3u_file_content').value = content;
-        
-                        // Avvia la ricostruzione della cache
+                        // Forza ricostruzione della cache con nuovi parametri
+                        const timestamp = Date.now();
+                        const filePathWithTimestamp = 'file://' + result.path + '?t=' + timestamp;
+                        
                         const rebuildResponse = await fetch('/api/rebuild-cache', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                m3u: 'file://uploads/user_playlist.txt',
-                                use_local_file: true
+                                m3u: filePathWithTimestamp,
+                                use_local_file: true,
+                                force_rebuild: true // Parametro extra per forzare pulizia completa
                             })
                         });
         
                         const rebuildResult = await rebuildResponse.json();
+                        
+                        hideLoader();
                         
                         if (rebuildResult.success) {
                             alert('Playlist caricata e catalogo ricostruito con successo!');
@@ -109,11 +120,13 @@ const getViewScripts = (protocol, host) => {
                             alert('Errore nella ricostruzione del catalogo: ' + rebuildResult.message);
                         }
                     } else {
+                        hideLoader();
                         alert('Errore nel caricamento del file: ' + result.message);
                     }
                 } catch (error) {
+                    hideLoader();
                     console.error('Errore:', error);
-                    alert('Errore durante il caricamento del file');
+                    alert('Errore durante il caricamento del file: ' + error.message);
                 }
             };
             
