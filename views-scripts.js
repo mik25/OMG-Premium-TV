@@ -306,6 +306,7 @@ const getViewScripts = (protocol, host) => {
         }
 
         async function restoreConfig(event) {
+        async function restoreConfig(event) {
             const file = event.target.files[0];
             if (!file) return;
         
@@ -331,14 +332,42 @@ const getViewScripts = (protocol, host) => {
         
                     // Ripristina le impostazioni della sezione addon_settings
                     const settings = config.addon_settings || config;
+                    const urls = config.urls || config;
+                    const credentials = config.credentials || config;
+                    const updateSettings = config.update_settings || config;
+        
+                    // Log dettagliato per debug
+                    console.log('Configurazione caricata:', {
+                        settings,
+                        urls,
+                        credentials,
+                        updateSettings
+                    });
+        
+                    // Gestione del file locale - MODIFICATO
+                    let localFileContent = null;
+                    
+                    // Controlla tutti i possibili percorsi per il contenuto del file
+                    if (config.local_file && config.local_file.content) {
+                        localFileContent = config.local_file.content;
+                    } else if (config.m3u_file_content) {
+                        localFileContent = config.m3u_file_content;
+                    }
+        
+                    // Log del contenuto del file locale
+                    console.log('Contenuto file locale:', {
+                        exists: !!localFileContent,
+                        length: localFileContent ? localFileContent.length : 'N/A',
+                        firstChars: localFileContent ? localFileContent.substring(0, 100) : 'N/A'
+                    });
+        
+                    // Ripristina le impostazioni generali
                     setInputValue('epg_enabled', settings.epg_enabled);
                     setInputValue('force_proxy', settings.force_proxy);
                     setInputValue('resolver_enabled', settings.resolver_enabled);
                     setInputValue('include_python_playlist', settings.include_python_playlist);
-                    setInputValue('use_local_file', settings.use_local_file);
         
                     // Ripristina gli URL
-                    const urls = config.urls || config;
                     setInputValue('m3u', urls.m3u);
                     setInputValue('epg', urls.epg);
                     setInputValue('proxy', urls.proxy);
@@ -346,52 +375,44 @@ const getViewScripts = (protocol, host) => {
                     document.getElementById('pythonScriptUrl').value = urls.python_script_url || '';
         
                     // Ripristina le credenziali
-                    const credentials = config.credentials || config;
                     setInputValue('proxy_pwd', credentials.proxy_pwd);
                     setInputValue('id_suffix', credentials.id_suffix);
         
                     // Ripristina le impostazioni di aggiornamento
-                    const updateSettings = config.update_settings || config;
                     setInputValue('update_interval', updateSettings.update_interval || '12:00');
                     document.getElementById('resolverUpdateInterval').value = updateSettings.resolver_update_interval || '';
                     document.getElementById('updateInterval').value = updateSettings.python_update_interval || '';
         
-                    // Gestione del file locale
-                    if (config.local_file || settings.use_local_file) {
-                        const localFileContent = (config.local_file?.content) || 
-                                                 (settings.m3u_file_content) || 
-                                                 config.m3u_file_content;
+                    // Imposta il flag use_local_file se il contenuto esiste
+                    if (localFileContent) {
+                        document.getElementById('use_local_file').checked = true;
+                        toggleM3USource(true);
                         
-                        if (localFileContent) {
-                            document.getElementById('use_local_file').checked = true;
-                            toggleM3USource(true);
-                            
-                            document.getElementById('m3u_file_content').value = localFileContent;
-                            document.getElementById('file_content').textContent = localFileContent;
-                            document.getElementById('file_content_preview').style.display = 'block';
+                        document.getElementById('m3u_file_content').value = localFileContent;
+                        document.getElementById('file_content').textContent = localFileContent;
+                        document.getElementById('file_content_preview').style.display = 'block';
         
-                            // Salva il file
-                            try {
-                                const response = await fetch('/upload-playlist', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json'
-                                    },
-                                    body: JSON.stringify({ 
-                                        content: localFileContent,
-                                        timestamp: Date.now()
-                                    })
-                                });
+                        // Salva il file
+                        try {
+                            const response = await fetch('/upload-playlist', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ 
+                                    content: localFileContent,
+                                    timestamp: Date.now()
+                                })
+                            });
         
-                                const uploadResult = await response.json();
+                            const uploadResult = await response.json();
         
-                                if (!uploadResult.success) {
-                                    throw new Error('Errore nel caricamento del file');
-                                }
-                            } catch (uploadError) {
-                                console.error('Errore nel salvataggio del file:', uploadError);
-                                alert('Errore nel ripristino del file M3U');
+                            if (!uploadResult.success) {
+                                throw new Error('Errore nel caricamento del file');
                             }
+                        } catch (uploadError) {
+                            console.error('Errore nel salvataggio del file:', uploadError);
+                            alert('Errore nel ripristino del file M3U');
                         }
                     }
         
@@ -484,15 +505,16 @@ const getViewScripts = (protocol, host) => {
                     const configQueryString = getConfigQueryString();
                     const configBase64 = btoa(configQueryString);
                     window.location.href = \`${protocol}://${host}/\${configBase64}/configure\`;
-
+        
                 } catch (error) {
+                    console.error('Errore completo:', error);
                     hideLoader();
-                    console.error('Errore:', error);
                     alert('Errore nel caricamento del file di configurazione: ' + error.message);
                 }
             };
             reader.readAsText(file);
         }
+
 
         // Funzioni per lo script Python
         function showPythonStatus(data) {
