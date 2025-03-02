@@ -110,16 +110,27 @@ class CacheManager extends EventEmitter {
             console.log('⚠️  Ricostruzione cache già in corso, skip...');
             return;
         }
-
+    
         try {
             this.cache.updateInProgress = true;
             console.log('\n=== Inizio Ricostruzione Cache ===');
             console.log('URL M3U:', m3uUrl);
-
+    
             if (config) {
                 this.config = {...this.config, ...config};
             }
-
+    
+            // Reset completo della cache
+            this.initCache();
+            
+            // Pulisci la mappa dei canali nel transformer prima di caricare
+            if (this.transformer && typeof this.transformer.reset === 'function') {
+                this.transformer.reset();
+            } else {
+                // Se la funzione reset non esiste, creiamo un nuovo transformer
+                this.transformer = new PlaylistTransformer();
+            }
+    
             // Passa include_python_playlist alla funzione loadAndTransform
             const data = await this.transformer.loadAndTransform(m3uUrl, this.config);
         
@@ -130,27 +141,19 @@ class CacheManager extends EventEmitter {
                 m3uUrl: m3uUrl,
                 epgUrls: data.epgUrls
             };
-
+    
             console.log(`✓ Canali in cache: ${data.channels.length}`);
             console.log(`✓ Generi trovati: ${data.genres.length}`);
             console.log('\n=== Cache Ricostruita ===\n');
-
+    
             this.emit('cacheUpdated', this.cache);
-
+    
         } catch (error) {
             console.error('\n❌ ERRORE nella ricostruzione della cache:', error);
             this.cache.updateInProgress = false;
             this.emit('cacheError', error);
             throw error;
         }
-    }
-
-    getCachedData() {
-        if (!this.cache || !this.cache.stremioData) return { channels: [], genres: [] };
-        return {
-            channels: this.cache.stremioData.channels,
-            genres: this.cache.stremioData.genres
-        };
     }
 
     getChannel(channelId) {
