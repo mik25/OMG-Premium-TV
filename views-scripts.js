@@ -218,74 +218,91 @@ const getViewScripts = (protocol, host) => {
             });
         }
 
-        function backupConfig() {
-            const queryString = getConfigQueryString();
-            const params = Object.fromEntries(new URLSearchParams(queryString));
-            
-            params.epg_enabled = params.epg_enabled === 'true';
-            params.force_proxy = params.force_proxy === 'true';
-            params.resolver_enabled = params.resolver_enabled === 'true';
-            params.use_local_file = params.use_local_file === 'true';
-            params.include_python_playlist = params.include_python_playlist === 'true';
-            
-            // Se stiamo usando un file locale, salva l'intero contenuto
-            if (params.use_local_file) {
-                const fullFileContent = document.getElementById('m3u_file_content').value;
-                params.m3u_file_content = fullFileContent;
-            }
-            
-            params.resolver_update_interval = 
-                document.getElementById('resolverUpdateInterval').value || 
-                document.querySelector('input[name="resolver_update_interval"]')?.value || 
-                '';
-            
-            // Ottieni l'intervallo di aggiornamento Python
-            const pythonUpdateInterval = document.getElementById('updateInterval').value || 
-                document.querySelector('input[name="python_update_interval"]')?.value || 
-                '';
-            params.python_update_interval = pythonUpdateInterval;
-            
-            // Crea un oggetto di configurazione con sezioni per migliorare la leggibilità
-            const configBackup = {
-                addon_settings: {
-                    epg_enabled: params.epg_enabled,
-                    force_proxy: params.force_proxy,
-                    resolver_enabled: params.resolver_enabled,
-                    include_python_playlist: params.include_python_playlist
-                },
-                urls: {
-                    m3u: params.m3u || '',
-                    epg: params.epg || '',
-                    proxy: params.proxy || '',
-                    resolver_script: params.resolver_script || '',
-                    python_script_url: params.python_script_url || ''
-                },
-                credentials: {
-                    proxy_pwd: params.proxy_pwd || '',
-                    id_suffix: params.id_suffix || ''
-                },
-                update_settings: {
-                    update_interval: params.update_interval || '12:00',
-                    resolver_update_interval: params.resolver_update_interval || '',
-                    python_update_interval: params.python_update_interval || ''
-                }
-            };
-            
-            // Aggiungi il contenuto del file M3U come ultima sezione per leggibilità
-            if (params.use_local_file && params.m3u_file_content) {
-                configBackup.local_file = {
-                    use_local_file: true,
-                    content: params.m3u_file_content
+        async function backupConfig() {
+            // Mostra la rotella di caricamento
+            showLoader('Preparazione backup in corso...');
+        
+            try {
+                const queryString = getConfigQueryString();
+                const params = Object.fromEntries(new URLSearchParams(queryString));
+                
+                // Converte i valori booleani
+                params.epg_enabled = params.epg_enabled === 'true';
+                params.force_proxy = params.force_proxy === 'true';
+                params.resolver_enabled = params.resolver_enabled === 'true';
+                params.use_local_file = params.use_local_file === 'true';
+                params.include_python_playlist = params.include_python_playlist === 'true';
+                
+                // Ottieni il contenuto direttamente dall'elemento di anteprima
+                const fileContentPreview = document.getElementById('file_content');
+                const fullFileContent = fileContentPreview.textContent;
+                
+                // Log dettagliato
+                console.log('Backup contenuto file:', {
+                    length: fullFileContent.length,
+                    firstChars: fullFileContent.substring(0, 100),
+                    lastChars: fullFileContent.substring(fullFileContent.length - 100)
+                });
+                
+                // Crea un oggetto di configurazione con sezioni per migliorare la leggibilità
+                const configBackup = {
+                    addon_settings: {
+                        epg_enabled: params.epg_enabled,
+                        force_proxy: params.force_proxy,
+                        resolver_enabled: params.resolver_enabled,
+                        include_python_playlist: params.include_python_playlist
+                    },
+                    urls: {
+                        m3u: params.m3u || '',
+                        epg: params.epg || '',
+                        proxy: params.proxy || '',
+                        resolver_script: params.resolver_script || '',
+                        python_script_url: params.python_script_url || ''
+                    },
+                    credentials: {
+                        proxy_pwd: params.proxy_pwd || '',
+                        id_suffix: params.id_suffix || ''
+                    },
+                    update_settings: {
+                        update_interval: params.update_interval || '12:00',
+                        resolver_update_interval: params.resolver_update_interval || '',
+                        python_update_interval: params.python_update_interval || ''
+                    }
                 };
+                
+                // Aggiungi il contenuto del file M3U come ultima sezione per leggibilità
+                if (params.use_local_file && fullFileContent) {
+                    configBackup.local_file = {
+                        use_local_file: true,
+                        content: fullFileContent
+                    };
+                }
+                
+                // Converti in JSON con formattazione
+                const configBlob = new Blob([JSON.stringify(configBackup, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(configBlob);
+                
+                // Crea un elemento di download temporaneo
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'omg_tv_config.json';
+                
+                // Aggiungi al documento e scatenare il download
+                document.body.appendChild(a);
+                a.click();
+                
+                // Pulisci
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                // Nascondi la rotella di caricamento
+                hideLoader();
+            } catch (error) {
+                // Gestisci eventuali errori
+                console.error('Errore nel backup:', error);
+                hideLoader();
+                alert('Errore durante il backup: ' + error.message);
             }
-            
-            const configBlob = new Blob([JSON.stringify(configBackup, null, 2)], {type: 'application/json'});
-            const url = URL.createObjectURL(configBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'omg_tv_config.json';
-            a.click();
-            URL.revokeObjectURL(url);
         }
 
         async function restoreConfig(event) {
