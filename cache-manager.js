@@ -284,4 +284,27 @@ class CacheManager extends EventEmitter {
     }
 }
 
-module.exports = (config) => new CacheManager(config);
+module.exports = (config) => {
+    const instance = new CacheManager(config);
+    // Verifica che il metodo getCachedData sia disponibile
+    if (typeof instance.getCachedData !== 'function') {
+        console.error('⚠️ Il metodo getCachedData non è definito nella classe CacheManager!');
+        // Definiamo il metodo qui nel caso non sia definito nella classe
+        instance.getCachedData = function() {
+            if (!this.cache || !this.cache.stremioData) {
+                return { 
+                    channels: [], 
+                    genres: [],
+                    epgUrls: []
+                };
+            }
+            
+            return {
+                channels: this.cache.stremioData.channels || [],
+                genres: this.cache.stremioData.genres || [],
+                epgUrls: this.cache.epgUrls || []
+            };
+        };
+    }
+    return instance;
+};
