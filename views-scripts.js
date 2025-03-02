@@ -91,7 +91,7 @@ const getViewScripts = (protocol, host) => {
                     document.getElementById('m3u_file_content').value = content;
                     
                     // Richiedi la cancellazione del vecchio file e il caricamento del nuovo
-                    const response = await fetch('/upload-playlist', {
+                    const uploadResponse = await fetch('/upload-playlist', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -102,28 +102,26 @@ const getViewScripts = (protocol, host) => {
                         })
                     });
         
-                    const result = await response.json();
+                    const uploadResult = await uploadResponse.json();
         
-                    if (result.success) {
+                    if (uploadResult.success) {
                         // Attendiamo un po' per essere sicuri che il file sia stato salvato e processato
                         await new Promise(resolve => setTimeout(resolve, 1000));
                         
                         // Forza ricostruzione della cache con nuovi parametri
-                        const timestamp = Date.now();
-                        const filePathWithTimestamp = 'file://' + result.path + '?t=' + timestamp;
-        
                         const rebuildResponse = await fetch('/api/rebuild-cache', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                m3u: 'file://' + result.path,  // Rimuoviamo il timestamp dall'URL
+                                m3u: 'file://' + uploadResult.path,
                                 use_local_file: true,
-                                force_rebuild: true,           // Usiamo questa opzione per forzare la ricostruzione
-                                timestamp: Date.now()          // Aggiungiamo il timestamp come parametro separato
+                                force_rebuild: true // Parametro extra per forzare pulizia completa
                             })
                         });
+        
+                        const rebuildResult = await rebuildResponse.json();
                         
                         hideLoader();
                         
@@ -134,7 +132,7 @@ const getViewScripts = (protocol, host) => {
                         }
                     } else {
                         hideLoader();
-                        alert('Errore nel caricamento del file: ' + result.message);
+                        alert('Errore nel caricamento del file: ' + uploadResult.message);
                     }
                 } catch (error) {
                     hideLoader();
