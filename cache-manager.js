@@ -156,6 +156,23 @@ class CacheManager extends EventEmitter {
         }
     }
 
+    getCachedData() {
+        // Assicuriamoci che la cache sia inizializzata
+        if (!this.cache || !this.cache.stremioData) {
+            return { 
+                channels: [], 
+                genres: [],
+                epgUrls: []
+            };
+        }
+        
+        return {
+            channels: this.cache.stremioData.channels || [],
+            genres: this.cache.stremioData.genres || [],
+            epgUrls: this.cache.epgUrls || []
+        };
+    }
+    
     getChannel(channelId) {
         if (!channelId || !this.cache?.stremioData?.channels) return null;
         const normalizedSearchId = this.normalizeId(channelId);
