@@ -388,7 +388,10 @@ class PlaylistTransformer {
           if (url.startsWith('file://')) {
               // Logica per file locale
               const fs = require('fs');
-              const filePath = url.replace('file://', '');
+              
+              // Rimuovi eventuali parametri di query dall'URL del file
+              const cleanUrl = url.split('?')[0];
+              const filePath = cleanUrl.replace('file://', '');
               
               console.log('\n=== Lettura file locale ===');
               console.log('Percorso:', filePath);
@@ -396,6 +399,7 @@ class PlaylistTransformer {
               if (!fs.existsSync(filePath)) {
                   throw new Error(`File locale non trovato: ${filePath}`);
               }
+
               
               // Leggi il file fresco dal disco, non dalla cache
               const content = fs.readFileSync(filePath, 'utf8', {
