@@ -111,18 +111,6 @@ const getViewScripts = (protocol, host) => {
                         // Forza ricostruzione della cache con nuovi parametri
                         const timestamp = Date.now();
                         const filePathWithTimestamp = 'file://' + result.path + '?t=' + timestamp;
-                        
-                        const rebuildResponse = await fetch('/api/rebuild-cache', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                m3u: filePathWithTimestamp,
-                                use_local_file: true,
-                                force_rebuild: true // Parametro extra per forzare pulizia completa
-                            })
-                        });
         
                         const rebuildResponse = await fetch('/api/rebuild-cache', {
                             method: 'POST',
