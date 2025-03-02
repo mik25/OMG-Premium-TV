@@ -110,7 +110,18 @@ const getViewScripts = (protocol, host) => {
                             })
                         });
         
-                        const rebuildResult = await rebuildResponse.json();
+                        const rebuildResponse = await fetch('/api/rebuild-cache', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                m3u: 'file://' + result.path,  // Rimuoviamo il timestamp dall'URL
+                                use_local_file: true,
+                                force_rebuild: true,           // Usiamo questa opzione per forzare la ricostruzione
+                                timestamp: Date.now()          // Aggiungiamo il timestamp come parametro separato
+                            })
+                        });
                         
                         hideLoader();
                         
