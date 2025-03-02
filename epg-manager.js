@@ -97,26 +97,46 @@ class EPGManager {
     async downloadAndProcessEPG(epgUrl) {
         console.log('\nDownload EPG da:', epgUrl.trim());
         try {
-            // Inizializza i contatori e le strutture dati
-            let programsProcessed = 0;
-            let channelsProcessed = 0;
+            console.log('Download con streaming...');
+            const response = await axios.get(epgUrl.trim(), { 
+                responseType: 'stream',
+                timeout: 100000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0',
+                    'Accept-Encoding': 'gzip, deflate, br'
+                }
+            });
+            
+            console.log('Inizio parsing XML in streaming...');
             
             // Configura il parser SAX
             const parser = sax.createStream(true, { 
                 trim: true, 
-                normalize: true 
+                normalize: true,
+                strictAttributes: false
             });
             
-            // Variabili per tenere traccia dello stato corrente
+            // Variabili per tracciare lo stato del parsing
             let currentProgram = null;
             let currentChannel = null;
             let currentElement = null;
             let currentElementData = '';
+            let programsProcessed = 0;
+            let channelsProcessed = 0;
             
-            // Gestisce l'apertura dei tag
+            // Gestione degli errori di parsing
+            parser.on('error', (error) => {
+                console.error('Errore di parsing SAX:', {
+                    message: error.message,
+                    line: error.line,
+                    column: error.column
+                });
+                parser.resume(); // Continua il parsing
+            });
+            
+            // Gestione apertura tag
             parser.on('opentag', (node) => {
                 currentElement = node.name;
-                currentElementData = '';
                 
                 if (node.name === 'channel') {
                     currentChannel = { id: node.attributes.id };
@@ -140,18 +160,17 @@ class EPGManager {
                 }
             });
             
-            // Gestisce il testo tra i tag
+            // Gestione testo tra i tag
             parser.on('text', (text) => {
                 currentElementData += text;
             });
             
-            // Gestisce la chiusura dei tag
+            // Gestione chiusura tag
             parser.on('closetag', (tagName) => {
                 if (tagName === 'channel') {
                     currentChannel = null;
                 }
                 else if (tagName === 'programme' && currentProgram) {
-                    // Salva il programma nella guida
                     const normalizedChannelId = this.normalizeId(currentProgram.channel);
                     
                     if (!this.programGuide.has(normalizedChannelId)) {
@@ -162,21 +181,19 @@ class EPGManager {
                     currentProgram = null;
                     programsProcessed++;
                     
-                    // Log di progresso ogni 10000 programmi
                     if (programsProcessed % 10000 === 0) {
                         console.log(`Processati ${programsProcessed} programmi...`);
                     }
                 }
                 else if (currentProgram) {
-                    // Aggiorna i dati del programma corrente
                     if (tagName === 'title') {
-                        currentProgram.title = currentElementData || 'Nessun Titolo';
+                        currentProgram.title = currentElementData.trim() || 'Nessun Titolo';
                     } 
                     else if (tagName === 'desc') {
-                        currentProgram.description = currentElementData || '';
+                        currentProgram.description = currentElementData.trim() || '';
                     } 
                     else if (tagName === 'category') {
-                        currentProgram.category = currentElementData || '';
+                        currentProgram.category = currentElementData.trim() || '';
                     }
                 }
                 
@@ -184,19 +201,7 @@ class EPGManager {
                 currentElementData = '';
             });
             
-            // Configura axios per lo streaming della risposta
-            const response = await axios.get(epgUrl.trim(), { 
-                responseType: 'stream',
-                timeout: 100000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0',
-                    'Accept-Encoding': 'gzip, deflate, br'
-                }
-            });
-            
-            console.log('Inizio parsing XML in streaming...');
-            
-            // Gestisci la decompressione in streaming in base all'header Content-Encoding
+            // Gestisci la decompressione in streaming
             let dataStream = response.data;
             const contentEncoding = response.headers['content-encoding']?.toLowerCase();
             
@@ -207,13 +212,12 @@ class EPGManager {
             } else if (contentEncoding === 'br') {
                 dataStream = dataStream.pipe(zlib.createBrotliDecompress());
             }
-            
-            // Elabora lo stream
+    
             return new Promise((resolve, reject) => {
                 dataStream.pipe(parser);
                 
                 parser.on('end', () => {
-                    // Ordina i programmi per orario di inizio
+                    // Ordina i programmi per ogni canale
                     for (const [channelId, programs] of this.programGuide.entries()) {
                         this.programGuide.set(channelId, programs.sort((a, b) => a.start - b.start));
                     }
@@ -227,21 +231,14 @@ class EPGManager {
                 });
                 
                 parser.on('error', (error) => {
-                    console.error('Errore nel parsing XML:', error);
-                    reject(error);
-                });
-                
-                dataStream.on('error', (error) => {
-                    console.error('Errore nello stream dei dati:', error);
+                    console.error('Errore finale nel parsing:', error);
                     reject(error);
                 });
             });
-            
+    
         } catch (error) {
             console.error(`❌ Errore EPG: ${error.message}`);
-            if (error.response) {
-                console.error(`Stato: ${error.response.status}`);
-            }
+            throw error;
         }
     }
 
