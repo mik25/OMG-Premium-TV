@@ -4,8 +4,6 @@ const zlib = require('zlib');
 const { promisify } = require('util');
 const gunzip = promisify(zlib.gunzip);
 const cron = require('node-cron');
-const sax = require('sax');
-const { Readable } = require('stream');
 
 class EPGManager {
     constructor() {
@@ -97,9 +95,8 @@ class EPGManager {
     async downloadAndProcessEPG(epgUrl) {
         console.log('\nDownload EPG da:', epgUrl.trim());
         try {
-            console.log('Download con streaming...');
             const response = await axios.get(epgUrl.trim(), { 
-                responseType: 'stream',
+                responseType: 'arraybuffer',
                 timeout: 100000,
                 headers: {
                     'User-Agent': 'Mozilla/5.0',
@@ -107,138 +104,30 @@ class EPGManager {
                 }
             });
             
-            console.log('Inizio parsing XML in streaming...');
-            
-            // Configura il parser SAX
-            const parser = sax.createStream(true, { 
-                trim: true, 
-                normalize: true,
-                strictAttributes: false
-            });
-            
-            // Variabili per tracciare lo stato del parsing
-            let currentProgram = null;
-            let currentChannel = null;
-            let currentElement = null;
-            let currentElementData = '';
-            let programsProcessed = 0;
-            let channelsProcessed = 0;
-            
-            // Gestione degli errori di parsing
-            parser.on('error', (error) => {
-                console.error('Errore di parsing SAX:', {
-                    message: error.message,
-                    line: error.line,
-                    column: error.column
-                });
-                parser.resume(); // Continua il parsing
-            });
-            
-            // Gestione apertura tag
-            parser.on('opentag', (node) => {
-                currentElement = node.name;
-                
-                if (node.name === 'channel') {
-                    currentChannel = { id: node.attributes.id };
-                    channelsProcessed++;
-                } 
-                else if (node.name === 'programme') {
-                    currentProgram = {
-                        channel: node.attributes.channel,
-                        start: this.parseEPGDate(node.attributes.start),
-                        stop: this.parseEPGDate(node.attributes.stop),
-                        title: '',
-                        description: '',
-                        category: ''
-                    };
+            let xmlString;
+            try {
+                xmlString = await gunzip(response.data);
+                xmlString = xmlString.toString('utf8');
+            } catch (gzipError) {
+                try {
+                    xmlString = zlib.inflateSync(response.data);
+                    xmlString = xmlString.toString('utf8');
+                } catch (zlibError) {
+                    xmlString = response.data.toString('utf8');
                 }
-                else if (node.name === 'icon' && currentChannel) {
-                    if (node.attributes.src) {
-                        const normalizedChannelId = this.normalizeId(currentChannel.id);
-                        this.channelIcons.set(normalizedChannelId, node.attributes.src);
-                    }
-                }
-            });
-            
-            // Gestione testo tra i tag
-            parser.on('text', (text) => {
-                currentElementData += text;
-            });
-            
-            // Gestione chiusura tag
-            parser.on('closetag', (tagName) => {
-                if (tagName === 'channel') {
-                    currentChannel = null;
-                }
-                else if (tagName === 'programme' && currentProgram) {
-                    const normalizedChannelId = this.normalizeId(currentProgram.channel);
-                    
-                    if (!this.programGuide.has(normalizedChannelId)) {
-                        this.programGuide.set(normalizedChannelId, []);
-                    }
-                    
-                    this.programGuide.get(normalizedChannelId).push(currentProgram);
-                    currentProgram = null;
-                    programsProcessed++;
-                    
-                    if (programsProcessed % 10000 === 0) {
-                        console.log(`Processati ${programsProcessed} programmi...`);
-                    }
-                }
-                else if (currentProgram) {
-                    if (tagName === 'title') {
-                        currentProgram.title = currentElementData.trim() || 'Nessun Titolo';
-                    } 
-                    else if (tagName === 'desc') {
-                        currentProgram.description = currentElementData.trim() || '';
-                    } 
-                    else if (tagName === 'category') {
-                        currentProgram.category = currentElementData.trim() || '';
-                    }
-                }
-                
-                currentElement = null;
-                currentElementData = '';
-            });
-            
-            // Gestisci la decompressione in streaming
-            let dataStream = response.data;
-            const contentEncoding = response.headers['content-encoding']?.toLowerCase();
-            
-            if (contentEncoding === 'gzip') {
-                dataStream = dataStream.pipe(zlib.createGunzip());
-            } else if (contentEncoding === 'deflate') {
-                dataStream = dataStream.pipe(zlib.createInflate());
-            } else if (contentEncoding === 'br') {
-                dataStream = dataStream.pipe(zlib.createBrotliDecompress());
             }
-    
-            return new Promise((resolve, reject) => {
-                dataStream.pipe(parser);
-                
-                parser.on('end', () => {
-                    // Ordina i programmi per ogni canale
-                    for (const [channelId, programs] of this.programGuide.entries()) {
-                        this.programGuide.set(channelId, programs.sort((a, b) => a.start - b.start));
-                    }
-                    
-                    console.log(`\n✓ Parsing EPG completato`);
-                    console.log(`✓ Canali processati: ${channelsProcessed}`);
-                    console.log(`✓ Programmi processati: ${programsProcessed}`);
-                    console.log(`✓ Canali con icone: ${this.channelIcons.size}`);
-                    
-                    resolve();
-                });
-                
-                parser.on('error', (error) => {
-                    console.error('Errore finale nel parsing:', error);
-                    reject(error);
-                });
-            });
-    
+            
+            console.log('Inizio parsing XML...');
+            const xmlData = await parseStringPromise(xmlString);
+            console.log('Parsing XML completato');
+            
+            if (!xmlData || !xmlData.tv) {
+                throw new Error('Struttura XML EPG non valida');
+            }
+            
+            await this.processEPGInChunks(xmlData);
         } catch (error) {
             console.error(`❌ Errore EPG: ${error.message}`);
-            throw error;
         }
     }
 
