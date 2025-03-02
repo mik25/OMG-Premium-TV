@@ -41,7 +41,7 @@ const getViewScripts = (protocol, host) => {
                 urlInput.disabled = false;
                 urlInput.required = true;
                 fileSection.style.display = 'none';
-                
+
                 // Non resettare il contenuto del file quando si disattiva l'opzione,
                 // in modo che se l'utente riattiva l'opzione, il contenuto sia ancora disponibile
                 // document.getElementById('m3u_file_input').value = '';
@@ -52,9 +52,23 @@ const getViewScripts = (protocol, host) => {
 
         // Funzione per gestire il caricamento del file
         document.addEventListener('DOMContentLoaded', function() {
+            // Event listener per il checkbox
+            const useLocalFileCheckbox = document.getElementById('use_local_file');
+            if (useLocalFileCheckbox) {
+                useLocalFileCheckbox.addEventListener('change', function() {
+                    toggleM3USource(this.checked);
+                });
+            }
+            
+            // Event listener per il file input
             const fileInput = document.getElementById('m3u_file_input');
             if (fileInput) {
                 fileInput.addEventListener('change', handleFileUpload);
+            }
+            
+            // Chiamata iniziale per impostare lo stato corretto
+            if (useLocalFileCheckbox) {
+                toggleM3USource(useLocalFileCheckbox.checked);
             }
         });
 
