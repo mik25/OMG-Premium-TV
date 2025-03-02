@@ -647,12 +647,41 @@ app.post('/api/rebuild-cache', async (req, res) => {
         }
 
         console.log('🔄 Richiesta di ricostruzione cache ricevuta');
-        await CacheManager.rebuildCache(req.body.m3u, req.body);
+        console.log('URL M3U:', m3uUrl);
+        console.log('Modalità file locale:', req.body.use_local_file === 'true' ? 'Sì' : 'No');
+        
+        // Se stiamo usando un file locale, verifichiamo che esista
+        if (req.body.use_local_file === 'true' && m3uUrl.startsWith('file://')) {
+            const filePath = m3uUrl.replace('file://', '').split('?')[0]; // Rimuovi parametri dalla query
+            const fs = require('fs');
+            
+            if (!fs.existsSync(filePath)) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: `File locale non trovato: ${filePath}` 
+                });
+            }
+            
+            // Log del contenuto del file per debug
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            console.log(`✓ File locale verificato: ${filePath} (${fileContent.length} bytes)`);
+            console.log('Primi 100 caratteri:', fileContent.substring(0, 100));
+        }
+        
+        // Force option per garantire pulizia completa
+        if (req.body.force_rebuild) {
+            CacheManager.initCache();
+            console.log('Cache reimpostata per ricostruzione forzata');
+        }
+        
+        // Ricostruzione cache
+        await CacheManager.rebuildCache(m3uUrl, req.body);
         
         if (req.body.epg_enabled === 'true') {
             console.log('📡 Ricostruzione EPG in corso...');
             const epgToUse = req.body.epg || 
-                (CacheManager.getCachedData().epgUrls && CacheManager.getCachedData().epgUrls.length > 0 
+                (CacheManager.getCachedData().epgUrls && 
+                CacheManager.getCachedData().epgUrls.length > 0 
                     ? CacheManager.getCachedData().epgUrls.join(',') 
                     : null);
             if (epgToUse) {
@@ -660,8 +689,12 @@ app.post('/api/rebuild-cache', async (req, res) => {
             }
         }
 
-        res.json({ success: true, message: 'Cache e EPG ricostruiti con successo' });
-       
+        res.json({ 
+            success: true, 
+            message: 'Cache e EPG ricostruiti con successo',
+            channels: CacheManager.getCachedData().channels.length,
+            genres: CacheManager.getCachedData().genres.length
+        });
     } catch (error) {
         console.error('Errore nella ricostruzione della cache:', error);
         res.status(500).json({ success: false, message: error.message });
