@@ -51,6 +51,14 @@ class PlaylistTransformer {
       this.channelsWithoutStreams = [];
   }
 
+  reset() {
+      this.remappingRules = new Map();
+      this.channelsMap = new Map();
+      this.channelsWithoutStreams = [];
+      
+      console.log('✓ Stato interno del transformer reimpostato');
+  }
+  
   normalizeId(id) {
       return id?.toLowerCase().replace(/[^\w.]/g, '').trim() || '';
   }
@@ -366,6 +374,11 @@ class PlaylistTransformer {
 
   async loadAndTransform(url, config = {}) {
       try {
+          // Reset all'inizio dell'operazione
+          this.remappingRules = new Map();
+          this.channelsMap = new Map();
+          this.channelsWithoutStreams = [];
+          
           await this.loadRemappingRules(config);
           
           // Raccogli le URL delle playlist
@@ -384,7 +397,14 @@ class PlaylistTransformer {
                   throw new Error(`File locale non trovato: ${filePath}`);
               }
               
-              const content = fs.readFileSync(filePath, 'utf8');
+              // Leggi il file fresco dal disco, non dalla cache
+              const content = fs.readFileSync(filePath, 'utf8', {
+                  // Opzioni per evitare la cache dei file
+                  flag: 'r', // 'r' apre il file in modalità lettura
+                  encoding: 'utf8'
+              });
+              
+              console.log(`✓ File locale letto: ${content.length} bytes`);
               
               if (content.trim().startsWith('#EXTM3U')) {
                   playlistUrls = [url];
