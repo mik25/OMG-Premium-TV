@@ -34,10 +34,32 @@ app.post('/upload-playlist', (req, res) => {
         // Cancella il vecchio file se esiste
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
+            console.log('File precedente cancellato:', filePath);
         }
         
         // Salva il nuovo file
         fs.writeFileSync(filePath, content, 'utf8');
+        console.log('Nuovo file salvato:', filePath, `(${content.length} bytes)`);
+        
+        // Attendi un attimo per assicurarsi che il file sia scritto sul disco
+        setTimeout(async () => {
+            try {
+                // Ricarichiamo la cache prima di restituire la risposta
+                const CacheManager = require('./cache-manager')(config);
+                
+                // Forza un reset della cache
+                CacheManager.initCache();
+                
+                // Ricostruisci la cache con il nuovo file
+                await CacheManager.rebuildCache(`file://${filePath}`, {
+                    use_local_file: 'true'
+                });
+                
+                console.log('Cache ricostruita con successo dopo upload');
+            } catch (rebuildError) {
+                console.error('Errore nella ricostruzione della cache:', rebuildError);
+            }
+        }, 500);
         
         res.json({ 
             success: true, 
