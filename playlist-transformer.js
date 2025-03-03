@@ -391,7 +391,16 @@ class PlaylistTransformer {
               
               // Rimuovi eventuali parametri di query dall'URL del file
               const cleanUrl = url.split('?')[0];
-              const filePath = cleanUrl.replace('file://', '');
+              
+              // Controlla se c'è un doppio file:// e correggi
+              let filePath;
+              if (cleanUrl.startsWith('file://file://')) {
+                  // Rimuovi il doppio prefisso
+                  filePath = cleanUrl.replace('file://file://', '');
+              } else {
+                  // Rimuovi il prefisso singolo
+                  filePath = cleanUrl.replace('file://', '');
+              }
               
               console.log('\n=== Lettura file locale ===');
               console.log('Percorso originale:', url);
@@ -459,7 +468,15 @@ class PlaylistTransformer {
                   // Gestisci URL locali e remote
                   if (playlistUrl.startsWith('file://')) {
                       const fs = require('fs');
-                      const filePath = playlistUrl.replace('file://', '');
+                      
+                      // Controlla se c'è un doppio file:// e correggi
+                      let filePath;
+                      if (playlistUrl.startsWith('file://file://')) {
+                          filePath = playlistUrl.replace('file://file://', '');
+                      } else {
+                          filePath = playlistUrl.replace('file://', '');
+                      }
+                      
                       playlistData = fs.readFileSync(filePath, 'utf8');
                   } else {
                       const playlistResponse = await axios.get(playlistUrl);
