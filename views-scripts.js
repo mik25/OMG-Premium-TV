@@ -90,47 +90,56 @@ const getViewScripts = (protocol, host) => {
                     // Salva il contenuto in un campo nascosto per il form
                     document.getElementById('m3u_file_content').value = content;
                     
-                    // Carica il file sul server
+                    // Richiedi la cancellazione del vecchio file e il caricamento del nuovo
                     const uploadResponse = await fetch('/upload-playlist', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({ 
-                            content: content
+                            content: content,
+                            timestamp: Date.now() // Aggiungiamo un timestamp per evitare caching
                         })
                     });
         
                     const uploadResult = await uploadResponse.json();
         
                     if (uploadResult.success) {
-                        // Aggiorna il campo M3U URL con il nuovo percorso
-                        document.querySelector('input[name="m3u"]').value = uploadResult.m3uUrl;
+                        // Importante: Aggiorna esplicitamente il campo M3U URL con il nuovo percorso
+                        const m3uUrlInput = document.getElementById('m3u_url_input');
+                        if (m3uUrlInput) {
+                            m3uUrlInput.value = uploadResult.m3uUrl;
+                        }
                         
-                        // Ottieni tutti i parametri correnti dal form
-                        const form = document.getElementById('configForm');
-                        const formData = new FormData(form);
-                        const params = new URLSearchParams();
+                        // Attendiamo un po' per essere sicuri che il file sia stato salvato e processato
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                         
-                        // Converti FormData in URLSearchParams
-                        formData.forEach((value, key) => {
-                            params.append(key, value);
+                        // Forza ricostruzione della cache con nuovi parametri
+                        const rebuildResponse = await fetch('/api/rebuild-cache', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                m3u: uploadResult.m3uUrl,
+                                use_local_file: 'true'
+                            })
                         });
+        
+                        const rebuildResult = await rebuildResponse.json();
                         
-                        // Aggiungi/sostituisci il parametro m3u con il nuovo URL
-                        params.set('m3u', uploadResult.m3uUrl);
-                        params.set('use_local_file', 'true');
-                        
-                        // Ricarica la pagina con i nuovi parametri
-                        const currentUrl = new URL(window.location.href);
-                        currentUrl.search = params.toString();
-                        
-                        // Visualizza un messaggio di successo prima di ricaricare
                         hideLoader();
-                        alert('Playlist caricata con successo! La pagina verrà ricaricata per applicare le modifiche.');
                         
-                        // Reindirizza alla stessa pagina ma con nuovi parametri
-                        window.location.href = currentUrl.toString();
+                        if (rebuildResult.success) {
+                            alert('Playlist caricata e catalogo ricostruito con successo!');
+                            
+                            // Aggiorna i parametri nell'URL e ricarica la pagina
+                            const form = document.getElementById('configForm');
+                            form.elements.m3u.value = uploadResult.m3uUrl;
+                            updateConfig(new Event('submit'));
+                        } else {
+                            alert('Errore nella ricostruzione del catalogo: ' + rebuildResult.message);
+                        }
                     } else {
                         hideLoader();
                         alert('Errore nel caricamento del file: ' + uploadResult.message);
