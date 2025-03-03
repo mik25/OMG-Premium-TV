@@ -4,6 +4,7 @@ services:
   omg-tv-stremio-addon:
     image: node:16-slim
     container_name: omg-premium-tv
+    restart: unless-stopped
 
     environment:
       - PORT=7860
