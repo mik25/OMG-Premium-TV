@@ -50,8 +50,7 @@ app.post('/upload-playlist', (req, res) => {
         res.json({ 
             success: true, 
             message: 'File caricato correttamente',
-            m3uUrl: m3uUrl,
-            timestamp: Date.now()
+            m3uUrl: m3uUrl
         });
     } catch (error) {
         console.error('Errore nel salvataggio del file:', error);
@@ -73,7 +72,7 @@ function saveM3UContentToMain(content) {
         fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    // Trova e cancella i vecchi file playlist dell'utente
+    // Trova e cancella tutti i vecchi file playlist dell'utente
     fs.readdirSync(uploadsDir).forEach(file => {
         if (file.startsWith('user_playlist_') && file.endsWith('.txt')) {
             try {
@@ -91,24 +90,42 @@ function saveM3UContentToMain(content) {
     const fileName = `user_playlist_${timestamp}.txt`;
     const filePath = path.join(uploadsDir, fileName);
     
-    // Crea anche una copia standard per retrocompatibilità
-    const standardFilePath = path.join(uploadsDir, 'user_playlist.txt');
-    
     try {
         // Salva il file con timestamp
         fs.writeFileSync(filePath, content, 'utf8');
-        
-        // Salva anche una copia nel percorso standard
-        fs.writeFileSync(standardFilePath, content, 'utf8');
-        
         console.log('File salvato correttamente:', filePath);
-        console.log('Copia standard salvata:', standardFilePath);
     } catch (error) {
         console.error('Errore nel salvataggio del file:', error);
     }
     
-    // Restituisci l'URL del file con timestamp per aggiornare la configurazione
+    // Restituisci l'URL del file con timestamp
     return `file://${filePath}`;
+}
+
+// Funzione per trovare il file più recente nella cartella uploads
+function getMostRecentPlaylistFile() {
+    const uploadsDir = path.join(__dirname, 'uploads');
+    
+    // Verifica che la cartella esista
+    if (!fs.existsSync(uploadsDir)) {
+        return null;
+    }
+    
+    // Trova tutti i file playlist
+    const playlistFiles = fs.readdirSync(uploadsDir)
+        .filter(file => file.startsWith('user_playlist_') && file.endsWith('.txt'))
+        .map(file => {
+            const filePath = path.join(uploadsDir, file);
+            return {
+                name: file,
+                path: filePath,
+                time: fs.statSync(filePath).mtime.getTime()
+            };
+        })
+        .sort((a, b) => b.time - a.time);  // Ordina per tempo di modifica (più recente prima)
+    
+    // Restituisci il percorso del file più recente o null se non ci sono file
+    return playlistFiles.length > 0 ? `file://${playlistFiles[0].path}` : null;
 }
 
 // Route principale - supporta sia il vecchio che il nuovo sistema
@@ -118,16 +135,16 @@ app.get('/', async (req, res) => {
    
    // Gestisci il contenuto del file M3U se presente e use_local_file è true
    if (req.query.use_local_file === 'true') {
-      const uploadsDir = path.join(__dirname, 'uploads');
-      const filePath = path.join(uploadsDir, 'user_playlist.txt');
-      
-      if (fs.existsSync(filePath)) {
-         // Imposta l'URL al file locale
-         req.query.m3u = `file://${filePath}`;
-      }
-      
       // Rimuovi eventuali dati grezzi dalla query
       delete req.query.m3u_file_content;
+      
+      // Se m3u non è impostato, usa il file più recente
+      if (!req.query.m3u) {
+          const recentFileUrl = getMostRecentPlaylistFile();
+          if (recentFileUrl) {
+              req.query.m3u = recentFileUrl;
+          }
+      }
    }
    
    res.send(renderConfigPage(protocol, host, req.query, config.manifest));
@@ -146,16 +163,11 @@ app.get('/:config/configure', async (req, res) => {
             // Rimuovi il contenuto del file M3U dalla configurazione
             delete decodedConfig.m3u_file_content;
             
-            if (decodedConfig.m3u_file_content) {
-                const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
-                decodedConfig.m3u = localUrl;
-            } else {
-                // Se use_local_file è true ma non abbiamo contenuto,
-                // impostiamo comunque l'URL al file fisso
-                const uploadsDir = path.join(__dirname, 'uploads');
-                const filePath = path.join(uploadsDir, 'user_playlist.txt');
-                if (fs.existsSync(filePath)) {
-                    decodedConfig.m3u = `file://${filePath}`;
+            // Se m3u non è impostato, usa il file più recente
+            if (!decodedConfig.m3u) {
+                const recentFileUrl = getMostRecentPlaylistFile();
+                if (recentFileUrl) {
+                    decodedConfig.m3u = recentFileUrl;
                 }
             }
         }
@@ -194,10 +206,12 @@ app.get('/manifest.json', async (req, res) => {
             // Rimuovi il contenuto del file dalla query prima di costruire l'URL di configurazione
             delete req.query.m3u_file_content;
             
-            const uploadsDir = path.join(__dirname, 'uploads');
-            const filePath = path.join(uploadsDir, 'user_playlist.txt');
-            if (fs.existsSync(filePath)) {
-                req.query.m3u = `file://${filePath}`;
+            // Se m3u non è impostato, usa il file più recente
+            if (!req.query.m3u) {
+                const recentFileUrl = getMostRecentPlaylistFile();
+                if (recentFileUrl) {
+                    req.query.m3u = recentFileUrl;
+                }
             }
         }
         
@@ -278,11 +292,12 @@ app.get('/:config/manifest.json', async (req, res) => {
             // Il contenuto del file M3U non deve essere incluso nel manifest
             delete decodedConfig.m3u_file_content;
             
-            // Se use_local_file è true, impostiamo l'URL al file locale
-            const uploadsDir = path.join(__dirname, 'uploads');
-            const filePath = path.join(uploadsDir, 'user_playlist.txt');
-            if (fs.existsSync(filePath)) {
-                decodedConfig.m3u = `file://${filePath}`;
+            // Se m3u non è impostato, usa il file più recente
+            if (!decodedConfig.m3u) {
+                const recentFileUrl = getMostRecentPlaylistFile();
+                if (recentFileUrl) {
+                    decodedConfig.m3u = recentFileUrl;
+                }
             }
         }
 
@@ -519,6 +534,18 @@ app.get('/:config/catalog/:type/:id/:extra?.json', async (req, res) => {
     try {
         const configString = Buffer.from(req.params.config, 'base64').toString();
         const decodedConfig = Object.fromEntries(new URLSearchParams(configString));
+        
+        // Rimuovi il contenuto del file M3U
+        delete decodedConfig.m3u_file_content;
+        
+        // Se use_local_file è true, assicurati di usare il file più recente
+        if (decodedConfig.use_local_file === 'true' && !decodedConfig.m3u) {
+            const recentFileUrl = getMostRecentPlaylistFile();
+            if (recentFileUrl) {
+                decodedConfig.m3u = recentFileUrl;
+            }
+        }
+        
         const extra = req.params.extra 
             ? safeParseExtra(req.params.extra) 
             : {};
@@ -544,6 +571,17 @@ app.get('/:config/stream/:type/:id.json', async (req, res) => {
         const configString = Buffer.from(req.params.config, 'base64').toString();
         const decodedConfig = Object.fromEntries(new URLSearchParams(configString));
         
+        // Rimuovi il contenuto del file M3U
+        delete decodedConfig.m3u_file_content;
+        
+        // Se use_local_file è true, assicurati di usare il file più recente
+        if (decodedConfig.use_local_file === 'true' && !decodedConfig.m3u) {
+            const recentFileUrl = getMostRecentPlaylistFile();
+            if (recentFileUrl) {
+                decodedConfig.m3u = recentFileUrl;
+            }
+        }
+        
         const result = await streamHandler({ 
             type: req.params.type, 
             id: req.params.id, 
@@ -563,6 +601,17 @@ app.get('/:config/meta/:type/:id.json', async (req, res) => {
     try {
         const configString = Buffer.from(req.params.config, 'base64').toString();
         const decodedConfig = Object.fromEntries(new URLSearchParams(configString));
+        
+        // Rimuovi il contenuto del file M3U
+        delete decodedConfig.m3u_file_content;
+        
+        // Se use_local_file è true, assicurati di usare il file più recente
+        if (decodedConfig.use_local_file === 'true' && !decodedConfig.m3u) {
+            const recentFileUrl = getMostRecentPlaylistFile();
+            if (recentFileUrl) {
+                decodedConfig.m3u = recentFileUrl;
+            }
+        }
         
         const result = await metaHandler({ 
             type: req.params.type, 
@@ -683,8 +732,7 @@ app.post('/api/rebuild-cache', async (req, res) => {
         }
         
         // Ricostruzione cache
-        await CacheManager.rebuildCache(m3uUrl, req.body);
-        
+        await CacheManager.rebuildCache(m3uUrl, req.body);       
         if (req.body.epg_enabled === 'true') {
             console.log('📡 Ricostruzione EPG in corso...');
             const epgToUse = req.body.epg || 
@@ -711,69 +759,70 @@ app.post('/api/rebuild-cache', async (req, res) => {
 
 // Endpoint API per le operazioni sullo script Python
 app.post('/api/python-script', async (req, res) => {
-    const { action, url, interval } = req.body;
-    
-    try {
-        if (action === 'download' && url) {
-            const success = await PythonRunner.downloadScript(url);
-            if (success) {
-                res.json({ success: true, message: 'Script scaricato con successo' });
-            } else {
-                res.status(500).json({ success: false, message: PythonRunner.getStatus().lastError });
-            }
-        } else if (action === 'execute') {
-            const success = await PythonRunner.executeScript();
-            if (success) {
-                res.json({ 
-                    success: true, 
-                    message: 'Script eseguito con successo', 
-                    m3uUrl: `${req.protocol}://${req.get('host')}/generated-m3u` 
-                });
-            } else {
-                res.status(500).json({ success: false, message: PythonRunner.getStatus().lastError });
-            }
-        } else if (action === 'status') {
-            res.json(PythonRunner.getStatus());
-        } else if (action === 'schedule' && interval) {
-            const success = PythonRunner.scheduleUpdate(interval);
-            if (success) {
-                res.json({ 
-                    success: true, 
-                    message: `Aggiornamento automatico impostato ogni ${interval}` 
-                });
-            } else {
-                res.status(500).json({ success: false, message: PythonRunner.getStatus().lastError });
-            }
-        } else if (action === 'stopSchedule') {
-            const stopped = PythonRunner.stopScheduledUpdates();
-            res.json({ 
-                success: true, 
-                message: stopped ? 'Aggiornamento automatico fermato' : 'Nessun aggiornamento pianificato da fermare' 
-            });
-        } else {
-            res.status(400).json({ success: false, message: 'Azione non valida' });
-        }
-    } catch (error) {
-        console.error('Errore API Python:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-async function startAddon() {
-   cleanupTempFolder();
-
+   const { action, url, interval } = req.body;
+   
    try {
-       const port = process.env.PORT || 10000;
-       app.listen(port, () => {
-          console.log('=============================\n');
-          console.log('OMG ADDON Avviato con successo');
-          console.log('Visita la pagina web per generare la configurazione del manifest e installarla su stremio');
-          console.log('Link alla pagina di configurazione:', `http://localhost:${port}`);
-          console.log('=============================\n');
-        });
+       if (action === 'download' && url) {
+           const success = await PythonRunner.downloadScript(url);
+           if (success) {
+               res.json({ success: true, message: 'Script scaricato con successo' });
+           } else {
+               res.status(500).json({ success: false, message: PythonRunner.getStatus().lastError });
+           }
+       } else if (action === 'execute') {
+           const success = await PythonRunner.executeScript();
+           if (success) {
+               res.json({ 
+                   success: true, 
+                   message: 'Script eseguito con successo', 
+                   m3uUrl: `${req.protocol}://${req.get('host')}/generated-m3u` 
+               });
+           } else {
+               res.status(500).json({ success: false, message: PythonRunner.getStatus().lastError });
+           }
+       } else if (action === 'status') {
+           res.json(PythonRunner.getStatus());
+       } else if (action === 'schedule' && interval) {
+           const success = PythonRunner.scheduleUpdate(interval);
+           if (success) {
+               res.json({ 
+                   success: true, 
+                   message: `Aggiornamento automatico impostato ogni ${interval}` 
+               });
+           } else {
+               res.status(500).json({ success: false, message: PythonRunner.getStatus().lastError });
+           }
+       } else if (action === 'stopSchedule') {
+           const stopped = PythonRunner.stopScheduledUpdates();
+           res.json({ 
+               success: true, 
+               message: stopped ? 'Aggiornamento automatico fermato' : 'Nessun aggiornamento pianificato da fermare' 
+           });
+       } else {
+           res.status(400).json({ success: false, message: 'Azione non valida' });
+       }
    } catch (error) {
-       console.error('Failed to start addon:', error);
-       process.exit(1);
+       console.error('Errore API Python:', error);
+       res.status(500).json({ success: false, message: error.message });
    }
+});
+
+async function startAddon() {
+  cleanupTempFolder();
+
+  try {
+      const port = process.env.PORT || 10000;
+      app.listen(port, () => {
+         console.log('=============================\n');
+         console.log('OMG ADDON Avviato con successo');
+         console.log('Visita la pagina web per generare la configurazione del manifest e installarla su stremio');
+         console.log('Link alla pagina di configurazione:', `http://localhost:${port}`);
+         console.log('=============================\n');
+       });
+  } catch (error) {
+      console.error('Failed to start addon:', error);
+      process.exit(1);
+  }
 }
 
 startAddon();
