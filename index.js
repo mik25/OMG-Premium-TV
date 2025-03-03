@@ -72,23 +72,7 @@ function saveM3UContentToMain(content) {
         fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    // Elimina solo i file di playlist caricati dall'utente 
-    // (quelli che iniziano con "user_playlist")
-    fs.readdirSync(uploadsDir).forEach(file => {
-        if (file.startsWith('user_playlist') && 
-            (file.endsWith('.txt') || file.endsWith('.m3u') || file.endsWith('.m3u8'))) {
-            try {
-                fs.unlinkSync(path.join(uploadsDir, file));
-                console.log(`Eliminato file precedente: ${file}`);
-            } catch (err) {
-                console.error(`Errore durante l'eliminazione di ${file}:`, err);
-            }
-        }
-    });
-    
-    // Crea un nome file con timestamp
-    const timestamp = Date.now();
-    const fileName = `user_playlist_${timestamp}.txt`;
+    const fileName = 'user_playlist.txt';
     const filePath = path.join(uploadsDir, fileName);
     
     // Usa UTF-8 encoding esplicitamente e gestisci eventuali errori
@@ -99,8 +83,9 @@ function saveM3UContentToMain(content) {
         console.error('Errore nel salvataggio del file:', error);
     }
     
-    // Restituisci l'URL locale con timestamp
-    return `file://${filePath}`;
+    // Aggiungiamo un parametro di query con timestamp per forzare il refresh
+    const timestamp = Date.now();
+    return `file://${filePath}?t=${timestamp}`;
 }
 
 // Route principale - supporta sia il vecchio che il nuovo sistema
