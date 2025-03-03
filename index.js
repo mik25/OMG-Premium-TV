@@ -75,7 +75,6 @@ function saveM3UContentToMain(content) {
     const fileName = 'user_playlist.txt';
     const filePath = path.join(uploadsDir, fileName);
     
-    // Usa UTF-8 encoding esplicitamente e gestisci eventuali errori
     try {
         fs.writeFileSync(filePath, content, 'utf8');
         console.log('File salvato correttamente:', filePath);
@@ -83,12 +82,11 @@ function saveM3UContentToMain(content) {
         console.error('Errore nel salvataggio del file:', error);
     }
     
-    // Aggiungiamo un parametro di query con timestamp per forzare il refresh
+    // Usa il percorso CORRETTO con il formato giusto per file://
     const timestamp = Date.now();
     
-    // MODIFICA FONDAMENTALE: non usare filePath direttamente, ma costruire il percorso corretto
-    // poiché filePath sarà qualcosa come "/app/uploads/user_playlist.txt" (percorso assoluto) 
-    return `file://${uploadsDir}/user_playlist.txt?t=${timestamp}`;
+    // Non includere nuovamente 'file://' nel percorso
+    return `file:///app/uploads/user_playlist.txt?t=${timestamp}`;
 }
 
 // Route principale - supporta sia il vecchio che il nuovo sistema
