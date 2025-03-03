@@ -90,46 +90,47 @@ const getViewScripts = (protocol, host) => {
                     // Salva il contenuto in un campo nascosto per il form
                     document.getElementById('m3u_file_content').value = content;
                     
-                    // Richiedi la cancellazione del vecchio file e il caricamento del nuovo
+                    // Carica il file sul server
                     const uploadResponse = await fetch('/upload-playlist', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({ 
-                            content: content,
-                            timestamp: Date.now() // Aggiungiamo un timestamp per evitare caching
+                            content: content
                         })
                     });
         
                     const uploadResult = await uploadResponse.json();
         
                     if (uploadResult.success) {
-                        // Attendiamo un po' per essere sicuri che il file sia stato salvato e processato
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        // Aggiorna il campo M3U URL con il nuovo percorso
+                        document.querySelector('input[name="m3u"]').value = uploadResult.m3uUrl;
                         
-                        // Forza ricostruzione della cache con nuovi parametri
-                        const rebuildResponse = await fetch('/api/rebuild-cache', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                m3u: 'file://' + uploadResult.path,
-                                use_local_file: true,
-                                force_rebuild: true // Parametro extra per forzare pulizia completa
-                            })
+                        // Ottieni tutti i parametri correnti dal form
+                        const form = document.getElementById('configForm');
+                        const formData = new FormData(form);
+                        const params = new URLSearchParams();
+                        
+                        // Converti FormData in URLSearchParams
+                        formData.forEach((value, key) => {
+                            params.append(key, value);
                         });
-        
-                        const rebuildResult = await rebuildResponse.json();
                         
+                        // Aggiungi/sostituisci il parametro m3u con il nuovo URL
+                        params.set('m3u', uploadResult.m3uUrl);
+                        params.set('use_local_file', 'true');
+                        
+                        // Ricarica la pagina con i nuovi parametri
+                        const currentUrl = new URL(window.location.href);
+                        currentUrl.search = params.toString();
+                        
+                        // Visualizza un messaggio di successo prima di ricaricare
                         hideLoader();
+                        alert('Playlist caricata con successo! La pagina verrà ricaricata per applicare le modifiche.');
                         
-                        if (rebuildResult.success) {
-                            alert('Playlist caricata e catalogo ricostruito con successo!');
-                        } else {
-                            alert('Errore nella ricostruzione del catalogo: ' + rebuildResult.message);
-                        }
+                        // Reindirizza alla stessa pagina ma con nuovi parametri
+                        window.location.href = currentUrl.toString();
                     } else {
                         hideLoader();
                         alert('Errore nel caricamento del file: ' + uploadResult.message);
@@ -143,6 +144,7 @@ const getViewScripts = (protocol, host) => {
             
             reader.readAsText(file);
         }
+
         // Funzioni per la gestione della configurazione
         function getConfigQueryString() {
             const form = document.getElementById('configForm');
