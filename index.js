@@ -155,19 +155,13 @@ app.get('/manifest.json', async (req, res) => {
         
         // Gestisci il contenuto del file M3U se presente
         if (req.query.use_local_file === 'true') {
-            if (req.query.m3u_file_content) {
-                const localUrl = saveM3UContentToMain(req.query.m3u_file_content);
-                req.query.m3u = localUrl;
-                // Rimuovi i dati grezzi dalla query
-                delete req.query.m3u_file_content;
-            } else {
-                // Se use_local_file è true ma non abbiamo contenuto,
-                // impostiamo comunque l'URL al file fisso
-                const uploadsDir = path.join(__dirname, 'uploads');
-                const filePath = path.join(uploadsDir, 'user_playlist.txt');
-                if (fs.existsSync(filePath)) {
-                    req.query.m3u = `file://${filePath}`;
-                }
+            // Rimuovi il contenuto del file dalla query prima di costruire l'URL di configurazione
+            delete req.query.m3u_file_content;
+            
+            const uploadsDir = path.join(__dirname, 'uploads');
+            const filePath = path.join(uploadsDir, 'user_playlist.txt');
+            if (fs.existsSync(filePath)) {
+                req.query.m3u = `file://${filePath}`;
             }
         }
         
@@ -177,7 +171,7 @@ app.get('/manifest.json', async (req, res) => {
         }
         
         // Se è impostato l'URL M3U, forza la ricostruzione della cache
-        if (req.query.m3u) {
+        if (req.query.m3u && CacheManager.cache.m3uUrl !== req.query.m3u) {
             console.log('Forzatura ricostruzione cache da manifest');
             await CacheManager.rebuildCache(req.query.m3u, req.query);
         }
@@ -245,23 +239,19 @@ app.get('/:config/manifest.json', async (req, res) => {
 
         // Gestisci il contenuto del file M3U se presente
         if (decodedConfig.use_local_file === 'true') {
-            if (decodedConfig.m3u_file_content) {
-                const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
-                decodedConfig.m3u = localUrl;
-                delete decodedConfig.m3u_file_content;
-            } else {
-                // Se use_local_file è true ma non abbiamo contenuto,
-                // impostiamo comunque l'URL al file fisso
-                const uploadsDir = path.join(__dirname, 'uploads');
-                const filePath = path.join(uploadsDir, 'user_playlist.txt');
-                if (fs.existsSync(filePath)) {
-                    decodedConfig.m3u = `file://${filePath}`;
-                }
+            // Il contenuto del file M3U non deve essere incluso nel manifest
+            delete decodedConfig.m3u_file_content;
+            
+            // Se use_local_file è true, impostiamo l'URL al file locale
+            const uploadsDir = path.join(__dirname, 'uploads');
+            const filePath = path.join(uploadsDir, 'user_playlist.txt');
+            if (fs.existsSync(filePath)) {
+                decodedConfig.m3u = `file://${filePath}`;
             }
         }
 
-        // Forza la ricostruzione della cache quando c'è un URL M3U
-        if (decodedConfig.m3u) {
+        // Forza la ricostruzione della cache quando c'è un URL M3U che è cambiato
+        if (decodedConfig.m3u && CacheManager.cache.m3uUrl !== decodedConfig.m3u) {
             console.log('Forzatura ricostruzione cache da config manifest');
             await CacheManager.rebuildCache(decodedConfig.m3u, decodedConfig);
         }
