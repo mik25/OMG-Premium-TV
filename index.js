@@ -24,16 +24,34 @@ app.post('/upload-playlist', (req, res) => {
     const { content } = req.body;
     
     try {
-        // Salva il file con un nome che include il timestamp
-        const fileInfo = saveM3UContentToMain(content);
+        // Salva il file e ottieni il percorso
+        const m3uUrl = saveM3UContentToMain(content);
+        
+        // Attendi un attimo per assicurarsi che il file sia scritto sul disco
+        setTimeout(async () => {
+            try {
+                // Ricarichiamo la cache prima di restituire la risposta
+                const CacheManager = require('./cache-manager')(config);
+                
+                // Forza un reset della cache
+                CacheManager.initCache();
+                
+                // Ricostruisci la cache con il nuovo file
+                await CacheManager.rebuildCache(m3uUrl, {
+                    use_local_file: 'true'
+                });
+                
+                console.log('Cache ricostruita con successo dopo upload');
+            } catch (rebuildError) {
+                console.error('Errore nella ricostruzione della cache:', rebuildError);
+            }
+        }, 500);
         
         res.json({ 
             success: true, 
             message: 'File caricato correttamente',
-            path: fileInfo.path,
-            fileName: fileInfo.fileName,
-            timestamp: fileInfo.timestamp,
-            m3uUrl: `file://${fileInfo.path}`
+            m3uUrl: m3uUrl,
+            timestamp: Date.now()
         });
     } catch (error) {
         console.error('Errore nel salvataggio del file:', error);
