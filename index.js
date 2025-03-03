@@ -85,7 +85,10 @@ function saveM3UContentToMain(content) {
     
     // Aggiungiamo un parametro di query con timestamp per forzare il refresh
     const timestamp = Date.now();
-    return `file://${filePath}?t=${timestamp}`;
+    
+    // MODIFICA FONDAMENTALE: non usare filePath direttamente, ma costruire il percorso corretto
+    // poiché filePath sarà qualcosa come "/app/uploads/user_playlist.txt" (percorso assoluto) 
+    return `file://${uploadsDir}/user_playlist.txt?t=${timestamp}`;
 }
 
 // Route principale - supporta sia il vecchio che il nuovo sistema
