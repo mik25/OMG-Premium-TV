@@ -55,25 +55,42 @@ function saveM3UContentToMain(content) {
         fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    // Crea un nome file con timestamp
+    // Trova e cancella i vecchi file playlist dell'utente
+    fs.readdirSync(uploadsDir).forEach(file => {
+        if (file.startsWith('user_playlist_') && file.endsWith('.txt')) {
+            try {
+                const filePath = path.join(uploadsDir, file);
+                fs.unlinkSync(filePath);
+                console.log('File vecchio cancellato:', filePath);
+            } catch (err) {
+                console.error(`Errore durante la cancellazione di ${file}:`, err);
+            }
+        }
+    });
+    
+    // Crea un nuovo file con timestamp
     const timestamp = Date.now();
     const fileName = `user_playlist_${timestamp}.txt`;
     const filePath = path.join(uploadsDir, fileName);
     
-    // Usa UTF-8 encoding esplicitamente
+    // Crea anche una copia standard per retrocompatibilità
+    const standardFilePath = path.join(uploadsDir, 'user_playlist.txt');
+    
     try {
+        // Salva il file con timestamp
         fs.writeFileSync(filePath, content, 'utf8');
+        
+        // Salva anche una copia nel percorso standard
+        fs.writeFileSync(standardFilePath, content, 'utf8');
+        
         console.log('File salvato correttamente:', filePath);
+        console.log('Copia standard salvata:', standardFilePath);
     } catch (error) {
         console.error('Errore nel salvataggio del file:', error);
     }
     
-    // Restituisci il percorso completo del file senza file://
-    return {
-        path: filePath,
-        fileName: fileName,
-        timestamp: timestamp
-    };
+    // Restituisci l'URL del file con timestamp per aggiornare la configurazione
+    return `file://${filePath}`;
 }
 
 // Route principale - supporta sia il vecchio che il nuovo sistema
