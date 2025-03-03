@@ -24,22 +24,8 @@ app.post('/upload-playlist', (req, res) => {
     const { content } = req.body;
     
     try {
-        const uploadsDir = path.join(__dirname, 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        
-        const filePath = path.join(uploadsDir, 'user_playlist.txt');
-        
-        // Cancella il vecchio file se esiste
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-            console.log('File precedente cancellato:', filePath);
-        }
-        
-        // Salva il nuovo file
-        fs.writeFileSync(filePath, content, 'utf8');
-        console.log('Nuovo file salvato:', filePath, `(${content.length} bytes)`);
+        // Usa la funzione modificata che include la pulizia e il timestamp
+        const filePath = saveM3UContentToMain(content);
         
         // Attendi un attimo per assicurarsi che il file sia scritto sul disco
         setTimeout(async () => {
@@ -51,7 +37,7 @@ app.post('/upload-playlist', (req, res) => {
                 CacheManager.initCache();
                 
                 // Ricostruisci la cache con il nuovo file
-                await CacheManager.rebuildCache(`file://${filePath}`, {
+                await CacheManager.rebuildCache(filePath, {
                     use_local_file: 'true'
                 });
                 
@@ -86,7 +72,23 @@ function saveM3UContentToMain(content) {
         fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    const fileName = 'user_playlist.txt';
+    // Elimina solo i file di playlist caricati dall'utente 
+    // (quelli che iniziano con "user_playlist")
+    fs.readdirSync(uploadsDir).forEach(file => {
+        if (file.startsWith('user_playlist') && 
+            (file.endsWith('.txt') || file.endsWith('.m3u') || file.endsWith('.m3u8'))) {
+            try {
+                fs.unlinkSync(path.join(uploadsDir, file));
+                console.log(`Eliminato file precedente: ${file}`);
+            } catch (err) {
+                console.error(`Errore durante l'eliminazione di ${file}:`, err);
+            }
+        }
+    });
+    
+    // Crea un nome file con timestamp
+    const timestamp = Date.now();
+    const fileName = `user_playlist_${timestamp}.txt`;
     const filePath = path.join(uploadsDir, fileName);
     
     // Usa UTF-8 encoding esplicitamente e gestisci eventuali errori
@@ -97,7 +99,7 @@ function saveM3UContentToMain(content) {
         console.error('Errore nel salvataggio del file:', error);
     }
     
-    // Restituisci l'URL locale da usare
+    // Restituisci l'URL locale con timestamp
     return `file://${filePath}`;
 }
 
