@@ -147,6 +147,7 @@ app.get('/:config/configure', async (req, res) => {
         res.redirect('/');
     }
 });
+
 app.get('/manifest.json', async (req, res) => {
     try {
         const protocol = req.headers['x-forwarded-proto'] || req.protocol;
@@ -174,7 +175,10 @@ app.get('/manifest.json', async (req, res) => {
         if (req.query.resolver_update_interval) {
             configUrl += `&resolver_update_interval=${encodeURIComponent(req.query.resolver_update_interval)}`;
         }
-        if (req.query.m3u && CacheManager.cache.m3uUrl !== req.query.m3u) {
+        
+        // Se è impostato l'URL M3U, forza la ricostruzione della cache
+        if (req.query.m3u) {
+            console.log('Forzatura ricostruzione cache da manifest');
             await CacheManager.rebuildCache(req.query.m3u, req.query);
         }
         
@@ -256,9 +260,12 @@ app.get('/:config/manifest.json', async (req, res) => {
             }
         }
 
-        if (decodedConfig.m3u && CacheManager.cache.m3uUrl !== decodedConfig.m3u) {
+        // Forza la ricostruzione della cache quando c'è un URL M3U
+        if (decodedConfig.m3u) {
+            console.log('Forzatura ricostruzione cache da config manifest');
             await CacheManager.rebuildCache(decodedConfig.m3u, decodedConfig);
         }
+        
         if (decodedConfig.resolver_script) {
             console.log('Inizializzazione Script Resolver dalla configurazione');
             try {
