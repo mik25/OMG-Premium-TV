@@ -8,7 +8,10 @@ services:
     environment:
       - PORT=7860
       - HOST=0.0.0.0
-      
+
+    ports:
+      - "7860:7860"  
+
     working_dir: /app
     volumes:
       - .:/app # Monta la directory corrente nel container (opzionale, se vuoi lavorare con file locali)
