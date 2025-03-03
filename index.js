@@ -108,11 +108,12 @@ app.get('/:config/configure', async (req, res) => {
         
         // Gestisci il contenuto del file M3U se presente
         if (decodedConfig.use_local_file === 'true') {
+            // Rimuovi il contenuto del file M3U dalla configurazione
+            delete decodedConfig.m3u_file_content;
+            
             if (decodedConfig.m3u_file_content) {
                 const localUrl = saveM3UContentToMain(decodedConfig.m3u_file_content);
                 decodedConfig.m3u = localUrl;
-                // Rimuovi i dati grezzi per risparmiare spazio nell'URL
-                delete decodedConfig.m3u_file_content;
             } else {
                 // Se use_local_file è true ma non abbiamo contenuto,
                 // impostiamo comunque l'URL al file fisso
