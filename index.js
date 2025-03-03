@@ -24,33 +24,16 @@ app.post('/upload-playlist', (req, res) => {
     const { content } = req.body;
     
     try {
-        // Usa la funzione modificata che include la pulizia e il timestamp
-        const filePath = saveM3UContentToMain(content);
-        
-        // Attendi un attimo per assicurarsi che il file sia scritto sul disco
-        setTimeout(async () => {
-            try {
-                // Ricarichiamo la cache prima di restituire la risposta
-                const CacheManager = require('./cache-manager')(config);
-                
-                // Forza un reset della cache
-                CacheManager.initCache();
-                
-                // Ricostruisci la cache con il nuovo file
-                await CacheManager.rebuildCache(filePath, {
-                    use_local_file: 'true'
-                });
-                
-                console.log('Cache ricostruita con successo dopo upload');
-            } catch (rebuildError) {
-                console.error('Errore nella ricostruzione della cache:', rebuildError);
-            }
-        }, 500);
+        // Salva il file con un nome che include il timestamp
+        const fileInfo = saveM3UContentToMain(content);
         
         res.json({ 
             success: true, 
             message: 'File caricato correttamente',
-            path: filePath 
+            path: fileInfo.path,
+            fileName: fileInfo.fileName,
+            timestamp: fileInfo.timestamp,
+            m3uUrl: `file://${fileInfo.path}`
         });
     } catch (error) {
         console.error('Errore nel salvataggio del file:', error);
@@ -72,9 +55,12 @@ function saveM3UContentToMain(content) {
         fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    const fileName = 'user_playlist.txt';
+    // Crea un nome file con timestamp
+    const timestamp = Date.now();
+    const fileName = `user_playlist_${timestamp}.txt`;
     const filePath = path.join(uploadsDir, fileName);
     
+    // Usa UTF-8 encoding esplicitamente
     try {
         fs.writeFileSync(filePath, content, 'utf8');
         console.log('File salvato correttamente:', filePath);
@@ -82,11 +68,12 @@ function saveM3UContentToMain(content) {
         console.error('Errore nel salvataggio del file:', error);
     }
     
-    // Usa il percorso CORRETTO con il formato giusto per file://
-    const timestamp = Date.now();
-    
-    // Non includere nuovamente 'file://' nel percorso
-    return `file:///app/uploads/user_playlist.txt?t=${timestamp}`;
+    // Restituisci il percorso completo del file senza file://
+    return {
+        path: filePath,
+        fileName: fileName,
+        timestamp: timestamp
+    };
 }
 
 // Route principale - supporta sia il vecchio che il nuovo sistema
