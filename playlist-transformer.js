@@ -51,6 +51,19 @@ class PlaylistTransformer {
       this.channelsWithoutStreams = [];
   }
 
+  normalizeGenreName(genre) {
+    if (!genre) return 'Altri Canali';
+    
+    // Rimuove tutti i caratteri '=' all'inizio e alla fine
+    let normalized = genre.trim().replace(/^=+|=+$/g, '');
+    
+    // Rimuove eventuali spazi in eccesso dopo la rimozione dei caratteri '='
+    normalized = normalized.trim();
+    
+    // Se dopo la normalizzazione il genere è vuoto, restituisci "Altri Canali"
+    return normalized || 'Altri Canali';
+  }
+  
   reset() {
       this.remappingRules = new Map();
       this.channelsMap = new Map();
@@ -182,43 +195,43 @@ class PlaylistTransformer {
   }
   
   parseChannelFromLine(line, headers, config) {
-      const metadata = line.substring(8).trim();
-      const tvgData = {};
+    const metadata = line.substring(8).trim();
+    const tvgData = {};
   
-      const tvgMatches = metadata.match(/([a-zA-Z-]+)="([^"]+)"/g) || [];
-      tvgMatches.forEach(match => {
-          const [key, value] = match.split('=');
-          const cleanKey = key.replace('tvg-', '');
-          tvgData[cleanKey] = value.replace(/"/g, '');
-      });
-
-      const groupMatch = metadata.match(/group-title="([^"]+)"/);
-      let genres = [];
-      if (groupMatch) {
-          genres = groupMatch[1].split(';')
-              .map(g => g.trim())
-              .filter(g => g !== '' && g.toLowerCase() !== 'undefined');
-      }
+    const tvgMatches = metadata.match(/([a-zA-Z-]+)="([^"]+)"/g) || [];
+    tvgMatches.forEach(match => {
+        const [key, value] = match.split('=');
+        const cleanKey = key.replace('tvg-', '');
+        tvgData[cleanKey] = value.replace(/"/g, '');
+    });
   
-      // Se genres è vuoto, usa 'Other Channels'
-      if (genres.length === 0) {
-          genres = ['Altri Canali'];
-      }
-
-      const nameParts = metadata.split(',');
-      const name = nameParts[nameParts.length - 1].trim();
-
-      if (!tvgData.id) {
-          const suffix = config?.id_suffix || '';
-          tvgData.id = this.cleanChannelName(name) + (suffix ? `.${suffix}` : '');
-      }
-
-      return {
-          name,
-          group: genres,
-          tvg: tvgData,
-          headers
-      };
+    const groupMatch = metadata.match(/group-title="([^"]+)"/);
+    let genres = [];
+    if (groupMatch) {
+        genres = groupMatch[1].split(';')
+            .map(g => this.normalizeGenreName(g))  // Applica la normalizzazione a ogni genere
+            .filter(g => g !== '' && g.toLowerCase() !== 'undefined');
+    }
+  
+    // Se genres è vuoto, usa 'Altri Canali'
+    if (genres.length === 0) {
+        genres = ['Altri Canali'];
+    }
+  
+    const nameParts = metadata.split(',');
+    const name = nameParts[nameParts.length - 1].trim();
+  
+    if (!tvgData.id) {
+        const suffix = config?.id_suffix || '';
+        tvgData.id = this.cleanChannelName(name) + (suffix ? `.${suffix}` : '');
+    }
+  
+    return {
+        name,
+        group: genres,
+        tvg: tvgData,
+        headers
+    };
   }
 
   getRemappedId(channel) {
