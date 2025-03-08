@@ -180,8 +180,7 @@ class PlaylistTransformer {
 
       // Unifica user-agent con varie priorità
       finalHeaders['User-Agent'] = httpHeaders['User-Agent'] || httpHeaders['user-agent'] ||
-                                  vlcHeaders['user-agent'] || extinfHeaders['user-agent'] ||
-                                  config.defaultUserAgent;
+                                  vlcHeaders['user-agent'] || extinfHeaders['user-agent'];
 
       // Normalizza referrer/referer - preferisci 'referrer' come nome finale
       if (vlcHeaders['referrer']) {
