@@ -263,7 +263,7 @@ class PlaylistTransformer {
 
   createChannelObject(channel, channelId) {
       const name = channel.tvg?.name || channel.name;
-      const cleanName = name.replace(/\s*\(.*?\)\s*/g, '').trim();
+      const cleanName = this.cleanChannelSuffixes(name.replace(/\s*\(.*?\)\s*/g, '').trim());
       const suffix = config?.id_suffix || ''; // Ottieni il suffisso dalla configurazione
       const finalChannelId = channelId + (suffix ? `.${suffix}` : ''); // Aggiungi il suffisso all'ID del canale
 
