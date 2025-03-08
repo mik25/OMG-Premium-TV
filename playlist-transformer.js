@@ -51,6 +51,14 @@ class PlaylistTransformer {
       this.channelsWithoutStreams = [];
   }
 
+  cleanChannelSuffixes(channelName) {
+    if (!channelName) return channelName;
+    
+    // Rimuove suffissi specifici (4K, FHD, HD, SD) alla fine del nome
+    // Utilizza una regex che cerca questi pattern preceduti da uno spazio o - alla fine della stringa
+    return channelName.replace(/[\s-]+(UHD|4K|FHD|HD|SD)$/i, '').trim();
+  }
+
   shouldSkipChannel(channelName) {
     if (!channelName) return false;
     
