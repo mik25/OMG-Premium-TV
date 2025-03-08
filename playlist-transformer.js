@@ -55,7 +55,7 @@ class PlaylistTransformer {
     if (!genre) return 'Altri Canali';
     
     // Rimuove tutti i caratteri '=' all'inizio e alla fine
-    let normalized = genre.trim().replace(/^=+|=+$/g, '');
+    let normalized = genre.trim().replace(/^[=\-]+|=+$/g, '');
     
     // Rimuove eventuali spazi in eccesso dopo la rimozione dei caratteri '='
     normalized = normalized.trim();
