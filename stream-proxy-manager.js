@@ -119,9 +119,11 @@ class StreamProxyManager {
         });
     
         // Assicurati di avere uno user agent valido
-        const userAgent = headers['User-Agent'] || headers['user-agent'] || config.defaultUserAgent || 'Mozilla/5.0';
-        params.set('h_user-agent', userAgent);
-    
+        const userAgent = headers['User-Agent'] || headers['user-agent'];
+        if (userAgent) {
+            params.set('h_user-agent', userAgent);
+        }
+        
         // Gestione referer
         let referer = headers['referer'] || headers['Referer'] || headers['referrer'] || headers['Referrer'];
         if (referer) {
