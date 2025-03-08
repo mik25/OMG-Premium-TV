@@ -51,6 +51,13 @@ class PlaylistTransformer {
       this.channelsWithoutStreams = [];
   }
 
+  shouldSkipChannel(channelName) {
+    if (!channelName) return false;
+    
+    // Ignora canali il cui nome inizia con "---" o "==="
+    return /^(---|===)/.test(channelName.trim());
+  }
+  
   normalizeGenreName(genre) {
     if (!genre) return 'Altri Canali';
     
