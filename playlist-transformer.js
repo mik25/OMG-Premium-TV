@@ -51,6 +51,13 @@ class PlaylistTransformer {
       this.channelsWithoutStreams = [];
   }
 
+  shouldSkipChannel(channelName) {
+    if (!channelName) return false;
+    
+    // Ignora canali il cui nome inizia con "---" o "==="
+    return /^(---|===)/.test(channelName.trim());
+  }
+  
   normalizeGenreName(genre) {
     if (!genre) return 'Altri Canali';
     
@@ -173,8 +180,7 @@ class PlaylistTransformer {
 
       // Unifica user-agent con varie priorità
       finalHeaders['User-Agent'] = httpHeaders['User-Agent'] || httpHeaders['user-agent'] ||
-                                  vlcHeaders['user-agent'] || extinfHeaders['user-agent'] ||
-                                  config.defaultUserAgent;
+                                  vlcHeaders['user-agent'] || extinfHeaders['user-agent'];
 
       // Normalizza referrer/referer - preferisci 'referrer' come nome finale
       if (vlcHeaders['referrer']) {
@@ -321,14 +327,25 @@ class PlaylistTransformer {
           const line = lines[i].trim();
       
           if (line.startsWith('#EXTINF:')) {
+              // Estrai il nome del canale per verificare se deve essere saltato
+              const lineWithoutPrefix = line.substring(8).trim();
+              const nameParts = lineWithoutPrefix.split(',');
+              const channelName = nameParts[nameParts.length - 1].trim();
+              
+              if (this.shouldSkipChannel(channelName)) {
+                  // Salta questo canale
+                  console.log(`⚠️ Canale ignorato: ${channelName}`);
+                  currentChannel = null;
+                  continue;
+              }
+              
               const { headers, nextIndex } = this.parseVLCOpts(lines, i + 1, line);
               i = nextIndex - 1;
               currentChannel = this.parseChannelFromLine(line, headers, config);
-
+          
               // Verifica la presenza di User-Agent, Referrer e Origin
-              const channelName = currentChannel.tvg?.name || currentChannel.name;
-
-
+              const channelNameLog = currentChannel.tvg?.name || currentChannel.name;
+            
           } else if ((line.startsWith('http') || line.toLowerCase() === 'null') && currentChannel) {
               const remappedId = this.getRemappedId(currentChannel);
               const normalizedId = this.normalizeId(remappedId);
