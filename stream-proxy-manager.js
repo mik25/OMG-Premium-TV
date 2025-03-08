@@ -125,7 +125,7 @@ class StreamProxyManager {
         });
     
         // Assicurati di avere uno user agent valido
-        const userAgent = headers['User-Agent'] || headers['user-agent'];
+        const userAgent = headers['_auto_user_agent'] ? null : (headers['User-Agent'] || headers['user-agent']);
         if (userAgent) {
             params.set('h_user-agent', userAgent);
         }
