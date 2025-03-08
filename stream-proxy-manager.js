@@ -37,15 +37,21 @@ class StreamProxyManager {
         }
 
         // Prepara gli headers finali per la richiesta
-        const finalHeaders = {
-            'User-Agent': headers['User-Agent'] || headers['user-agent'] || config.defaultUserAgent
-        };
-
+        const finalHeaders = {};
+        
+        // Aggiungi User-Agent solo se presente negli header originali
+        const userAgent = headers['User-Agent'] || headers['user-agent'];
+        if (userAgent) {
+            finalHeaders['User-Agent'] = userAgent;
+        }
+        
+        // Aggiungi Referer se presente
         if (headers['referer'] || headers['Referer'] || headers['referrer'] || headers['Referrer']) {
             finalHeaders['Referer'] = headers['referer'] || headers['Referer'] || 
-                                    headers['referrer'] || headers['Referrer'];
+                                     headers['referrer'] || headers['Referrer'];
         }
-
+        
+        // Aggiungi Origin se presente
         if (headers['origin'] || headers['Origin']) {
             finalHeaders['Origin'] = headers['origin'] || headers['Origin'];
         }
@@ -176,9 +182,6 @@ class StreamProxyManager {
             const headers = input.headers || {};
             
             // Assicura che lo User-Agent sia impostato
-            if (!headers['User-Agent'] && !headers['user-agent']) {
-                headers['User-Agent'] = config.defaultUserAgent;
-            }
     
             // Costruisce l'URL del proxy (questa chiamata già normalizza l'URL rimuovendo lo slash finale)
             let proxyUrl = await this.buildProxyUrl(input.url, headers, userConfig);
