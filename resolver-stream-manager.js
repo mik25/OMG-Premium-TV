@@ -131,8 +131,9 @@ class ResolverStreamManager {
                     const headers = stream.headers || {};
                     if (!headers['User-Agent'] && !headers['user-agent']) {
                         headers['User-Agent'] = config.defaultUserAgent;
+                        headers['_auto_user_agent'] = true; // Flag per indicare che è stato aggiunto automaticamente
                     }
-
+                    
                     const streamDetails = {
                         name: stream.name || input.name,
                         url: stream.url,
