@@ -288,9 +288,6 @@ async function streamHandler({ id, config: userConfig }) {
         if (channel.streamInfo.urls) {
             for (const stream of channel.streamInfo.urls) {
                 const headers = stream.headers || {};
-                if (!headers['User-Agent']) {
-                    headers['User-Agent'] = config.defaultUserAgent;
-                }
                 
                 originalStreamDetails.push({
                     name: channel.name,
