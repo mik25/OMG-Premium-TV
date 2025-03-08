@@ -288,6 +288,10 @@ async function streamHandler({ id, config: userConfig }) {
         if (channel.streamInfo.urls) {
             for (const stream of channel.streamInfo.urls) {
                 const headers = stream.headers || {};
+                if (!headers['User-Agent']) {
+                    headers['User-Agent'] = config.defaultUserAgent;
+                    headers['_auto_user_agent'] = true; // Flag per indicare che è stato aggiunto automaticamente
+                }
                 
                 originalStreamDetails.push({
                     name: channel.name,
@@ -297,7 +301,6 @@ async function streamHandler({ id, config: userConfig }) {
                 });
             }
         }
-
 
         if (userConfig.resolver_enabled === 'true' && userConfig.resolver_script) {
             console.log(`\n=== Utilizzo Resolver per ${channel.name} ===`);
