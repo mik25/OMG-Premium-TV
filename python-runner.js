@@ -10,8 +10,9 @@ class PythonRunner {
     constructor() {
         this.scriptPath = path.join(__dirname, 'temp_script.py');
         
-        // Modifica il percorso per salvare nella directory uploads
+        // Modifica il percorso per salvare nella directory uploads con timestamp
         this.m3uOutputPath = path.join(__dirname, 'uploads', 'generated_playlist.m3u');
+        this.useTimestampInFilename = true; // Flag per abilitare l'uso del timestamp nei nomi file
         
         this.lastExecution = null;
         this.lastError = null;
@@ -132,7 +133,10 @@ class PythonRunner {
      */
     addRegenerateChannel() {
         try {
-            if (!fs.existsSync(this.m3uOutputPath)) {
+            // Ottieni il percorso del file M3U più recente
+            const m3uPath = this.getM3UPath();
+            
+            if (!fs.existsSync(m3uPath)) {
                 console.error('❌ File M3U non trovato, impossibile aggiungere canale di rigenerazione');
                 return false;
             }
@@ -140,7 +144,7 @@ class PythonRunner {
             console.log('Aggiunta canale di rigenerazione al file M3U...');
             
             // Leggi il contenuto attuale del file
-            const currentContent = fs.readFileSync(this.m3uOutputPath, 'utf8');
+            const currentContent = fs.readFileSync(m3uPath, 'utf8');
             
             // Prepara l'entry del canale speciale
             const specialChannel = `
@@ -154,8 +158,8 @@ http://127.0.0.1/regenerate`;
             }
             
             // Aggiungi il canale speciale alla fine del file
-            fs.appendFileSync(this.m3uOutputPath, specialChannel);
-            console.log('✓ Canale di rigenerazione aggiunto con successo al file M3U');
+            fs.appendFileSync(m3uPath, specialChannel);
+            console.log(`✓ Canale di rigenerazione aggiunto con successo al file M3U: ${m3uPath}`);
             
             return true;
         } catch (error) {
@@ -168,6 +172,21 @@ http://127.0.0.1/regenerate`;
      * Esegue lo script Python scaricato
      * @returns {Promise<boolean>} - true se l'esecuzione è avvenuta con successo
      */
+    /**
+     * Genera un nome file con timestamp
+     * @returns {string} - Il percorso del file con timestamp
+     */
+    generateTimestampedFilename() {
+        const now = new Date();
+        const timestamp = now.getFullYear() + 
+                         ('0' + (now.getMonth() + 1)).slice(-2) + 
+                         ('0' + now.getDate()).slice(-2) + '_' + 
+                         ('0' + now.getHours()).slice(-2) + 
+                         ('0' + now.getMinutes()).slice(-2) + 
+                         ('0' + now.getSeconds()).slice(-2);
+        
+        return path.join(__dirname, 'uploads', `generated_playlist_${timestamp}.m3u`);
+    }
     async executeScript() {
         if (this.isRunning) {
             console.log('⚠️ Un\'esecuzione è già in corso, attendere...');
@@ -217,15 +236,23 @@ http://127.0.0.1/regenerate`;
                     fs.mkdirSync(uploadsDir, { recursive: true });
                 }
                 
-                // Se il file destinazione esiste già, eliminalo
-                if (fs.existsSync(this.m3uOutputPath)) {
-                    fs.unlinkSync(this.m3uOutputPath);
+                // Genera un nome file con timestamp se l'opzione è abilitata
+                let destinationPath = this.m3uOutputPath;
+                if (this.useTimestampInFilename) {
+                    destinationPath = this.generateTimestampedFilename();
+                    // Aggiorna anche il percorso standard per compatibilità
+                    this.m3uOutputPath = destinationPath;
+                } else {
+                    // Se il file destinazione esiste già, eliminalo
+                    if (fs.existsSync(this.m3uOutputPath)) {
+                        fs.unlinkSync(this.m3uOutputPath);
+                    }
                 }
                 
                 // Copia il file nella directory uploads
-                if (sourcePath !== this.m3uOutputPath) {
-                    fs.copyFileSync(sourcePath, this.m3uOutputPath);
-                    console.log(`✓ File copiato in "${this.m3uOutputPath}"`);
+                if (sourcePath !== destinationPath) {
+                    fs.copyFileSync(sourcePath, destinationPath);
+                    console.log(`✓ File copiato in "${destinationPath}"`);
                 }
                 
                 // Aggiungi il canale di rigenerazione
@@ -245,8 +272,21 @@ http://127.0.0.1/regenerate`;
                         fs.mkdirSync(uploadsDir, { recursive: true });
                     }
                     
-                    fs.copyFileSync(possiblePath, this.m3uOutputPath);
-                    console.log(`✓ File M3U trovato in ${possiblePath} e copiato in ${this.m3uOutputPath}`);
+                    // Genera un nome file con timestamp se l'opzione è abilitata
+                    let destinationPath = this.m3uOutputPath;
+                    if (this.useTimestampInFilename) {
+                        destinationPath = this.generateTimestampedFilename();
+                        // Aggiorna anche il percorso standard per compatibilità
+                        this.m3uOutputPath = destinationPath;
+                    } else {
+                        // Se il file destinazione esiste già, eliminalo
+                        if (fs.existsSync(this.m3uOutputPath)) {
+                            fs.unlinkSync(this.m3uOutputPath);
+                        }
+                    }
+                    
+                    fs.copyFileSync(possiblePath, destinationPath);
+                    console.log(`✓ File M3U trovato in ${possiblePath} e copiato in ${destinationPath}`);
                     
                     // Aggiungi il canale di rigenerazione
                     this.addRegenerateChannel();
@@ -370,11 +410,14 @@ http://127.0.0.1/regenerate`;
      */
     getM3UContent() {
         try {
-            if (fs.existsSync(this.m3uOutputPath)) {
-                return fs.readFileSync(this.m3uOutputPath, 'utf8');
+            // Ottieni il percorso del file M3U più recente
+            const m3uPath = this.getM3UPath();
+            
+            if (fs.existsSync(m3uPath)) {
+                return fs.readFileSync(m3uPath, 'utf8');
             }
             
-            // Se il file standard non esiste, cerca altri file M3U
+            // Se il file più recente non esiste, cerca altri file M3U
             const files = this.findAllM3UFiles();
             if (files.length > 0) {
                 return fs.readFileSync(files[0], 'utf8');
@@ -388,10 +431,33 @@ http://127.0.0.1/regenerate`;
     }
 
     /**
-     * Restituisce il percorso del file M3U generato
-     * @returns {string} - Il percorso del file M3U
+     * Restituisce il percorso del file M3U generato più recente
+     * @returns {string} - Il percorso del file M3U più recente
      */
     getM3UPath() {
+        if (this.useTimestampInFilename) {
+            // Cerca tutti i file generati con pattern di timestamp
+            const uploadsDir = path.join(__dirname, 'uploads');
+            if (fs.existsSync(uploadsDir)) {
+                const files = fs.readdirSync(uploadsDir)
+                    .filter(file => file.startsWith('generated_playlist_') && file.endsWith('.m3u'))
+                    .map(file => {
+                        const filePath = path.join(uploadsDir, file);
+                        return {
+                            name: file,
+                            path: filePath,
+                            time: fs.statSync(filePath).mtime.getTime()
+                        };
+                    })
+                    .sort((a, b) => b.time - a.time); // Ordina per tempo di modifica (più recente prima)
+                
+                if (files.length > 0) {
+                    return files[0].path;
+                }
+            }
+        }
+        
+        // Fallback al percorso standard
         return this.m3uOutputPath;
     }
 

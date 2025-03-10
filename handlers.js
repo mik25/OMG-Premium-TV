@@ -52,12 +52,45 @@ async function catalogHandler({ type, id, extra, config: userConfig }) {
             const fs = require('fs');
             const path = require('path');
             const uploadsDir = path.join(__dirname, 'uploads');
-            const filePath = path.join(uploadsDir, 'user_playlist.txt');
             
-            if (fs.existsSync(filePath)) {
-                userConfig.m3u = `file://${filePath}`;
-            } else {
-                console.log('[Handlers] File locale non trovato: user_playlist.txt');
+            // Crea la directory uploads se non esiste
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+            
+            // Cerca il file più recente nella cartella uploads
+            let mostRecentFile = null;
+            let mostRecentTime = 0;
+            
+            try {
+                const files = fs.readdirSync(uploadsDir);
+                for (const file of files) {
+                    if (file.startsWith('user_playlist_') && file.endsWith('.txt')) {
+                        const filePath = path.join(uploadsDir, file);
+                        const stats = fs.statSync(filePath);
+                        if (stats.mtime.getTime() > mostRecentTime) {
+                            mostRecentTime = stats.mtime.getTime();
+                            mostRecentFile = filePath;
+                        }
+                    }
+                }
+                
+                // Se abbiamo trovato un file, usalo
+                if (mostRecentFile) {
+                    userConfig.m3u = `file://${mostRecentFile}`;
+                    console.log('[Handlers] Usando il file locale più recente:', mostRecentFile);
+                } else {
+                    // Fallback al file standard se non ci sono file con timestamp
+                    const standardFilePath = path.join(uploadsDir, 'user_playlist.txt');
+                    if (fs.existsSync(standardFilePath)) {
+                        userConfig.m3u = `file://${standardFilePath}`;
+                        console.log('[Handlers] Usando il file locale standard:', standardFilePath);
+                    } else {
+                        console.log('[Handlers] File locale non trovato');
+                    }
+                }
+            } catch (error) {
+                console.error('[Handlers] Errore nella ricerca del file locale:', error);
             }
         }
         
@@ -211,12 +244,45 @@ async function streamHandler({ id, config: userConfig }) {
             const fs = require('fs');
             const path = require('path');
             const uploadsDir = path.join(__dirname, 'uploads');
-            const filePath = path.join(uploadsDir, 'user_playlist.txt');
             
-            if (fs.existsSync(filePath)) {
-                userConfig.m3u = `file://${filePath}`;
-            } else {
-                console.log('File locale non trovato: user_playlist.txt');
+            // Crea la directory uploads se non esiste
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+            
+            // Cerca il file più recente nella cartella uploads
+            let mostRecentFile = null;
+            let mostRecentTime = 0;
+            
+            try {
+                const files = fs.readdirSync(uploadsDir);
+                for (const file of files) {
+                    if (file.startsWith('user_playlist_') && file.endsWith('.txt')) {
+                        const filePath = path.join(uploadsDir, file);
+                        const stats = fs.statSync(filePath);
+                        if (stats.mtime.getTime() > mostRecentTime) {
+                            mostRecentTime = stats.mtime.getTime();
+                            mostRecentFile = filePath;
+                        }
+                    }
+                }
+                
+                // Se abbiamo trovato un file, usalo
+                if (mostRecentFile) {
+                    userConfig.m3u = `file://${mostRecentFile}`;
+                    console.log('Usando il file locale più recente:', mostRecentFile);
+                } else {
+                    // Fallback al file standard se non ci sono file con timestamp
+                    const standardFilePath = path.join(uploadsDir, 'user_playlist.txt');
+                    if (fs.existsSync(standardFilePath)) {
+                        userConfig.m3u = `file://${standardFilePath}`;
+                        console.log('Usando il file locale standard:', standardFilePath);
+                    } else {
+                        console.log('File locale non trovato');
+                    }
+                }
+            } catch (error) {
+                console.error('Errore nella ricerca del file locale:', error);
             }
         }
         

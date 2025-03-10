@@ -239,8 +239,29 @@ class CacheManager extends EventEmitter {
         }
 
         const timeSinceLastUpdate = Date.now() - this.cache.lastUpdated;
+        let needsUpdate = timeSinceLastUpdate >= updateIntervalMs;
+        
+        // Verifica se stiamo usando un file locale e se è stato modificato
+        if (!needsUpdate && this.cache.m3uUrl && this.cache.m3uUrl.startsWith('file://')) {
+            const fs = require('fs');
+            const filePath = this.cache.m3uUrl.replace('file://', '');
+            
+            try {
+                if (fs.existsSync(filePath)) {
+                    const stats = fs.statSync(filePath);
+                    const fileModifiedTime = stats.mtime.getTime();
+                    
+                    // Se il file è stato modificato dopo l'ultimo aggiornamento della cache
+                    if (fileModifiedTime > this.cache.lastUpdated) {
+                        console.log('File locale modificato, necessario aggiornamento');
+                        needsUpdate = true;
+                    }
+                }
+            } catch (error) {
+                console.error('Errore nel controllo del file locale:', error);
+            }
+        }
 
-        const needsUpdate = timeSinceLastUpdate >= updateIntervalMs;
         if (needsUpdate) {
             console.log('Cache obsoleta, necessario aggiornamento');
         }

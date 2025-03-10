@@ -13,7 +13,16 @@ const ResolverStreamManager = require('./resolver-stream-manager')();
 const PythonResolver = require('./python-resolver');
 const fs = require('fs');
 const path = require('path');
+const FileWatcher = require('./file-watcher');
 const app = express();
+
+// Initialize the file watcher with the cache manager
+const fileWatcher = new FileWatcher(CacheManager);
+
+// Listen for cache rebuild events
+fileWatcher.on('cacheRebuilt', ({ filePath, fileUrl }) => {
+    console.log(`🔄 Cache rebuilt after file change: ${path.basename(filePath)}`);
+});
 
 app.use(cors());
 app.use(express.json({limit: '5mb'}));
@@ -104,6 +113,12 @@ function saveM3UContentToMain(content) {
 
 // Funzione per trovare il file più recente nella cartella uploads
 function getMostRecentPlaylistFile() {
+    // Use the FileWatcher's implementation if available
+    if (fileWatcher && typeof fileWatcher.getMostRecentPlaylistFile === 'function') {
+        return fileWatcher.getMostRecentPlaylistFile();
+    }
+    
+    // Fallback to original implementation
     const uploadsDir = path.join(__dirname, 'uploads');
     
     // Verifica che la cartella esista
