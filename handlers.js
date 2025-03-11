@@ -151,7 +151,7 @@ async function catalogHandler({ type, id, extra, config: userConfig }) {
 
         const paginatedChannels = filteredChannels.slice(skip, skip + ITEMS_PER_PAGE);
 
-        const metas = paginatedChannels.map(channel => {
+        const metaPromises = paginatedChannels.map(channel => {
             const displayName = cleanNameForImage(channel.name);
             const encodedName = encodeURIComponent(displayName).replace(/%20/g, '+');
             const fallbackLogo = `https://dummyimage.com/500x500/590b8a/ffffff.jpg&text=${encodedName}`;
@@ -187,8 +187,10 @@ async function catalogHandler({ type, id, extra, config: userConfig }) {
                 }
             }
 
-            return await enrichWithEPG(meta, channel.streamInfo?.tvg?.id, userConfig);
+            return enrichWithEPG(meta, channel.streamInfo?.tvg?.id, userConfig);
         });
+
+        const metas = await Promise.all(metaPromises);
 
         return {
             metas,
