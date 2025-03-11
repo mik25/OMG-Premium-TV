@@ -260,9 +260,8 @@ class EPGManager {
             this.programGuide.set(channelId, programs.sort((a, b) => a.start - b.start));
         }
 
-        console.log('\nRiepilogo Processamento EPG:');
+        console.log('Riepilogo Processamento EPG:');
         console.log(`✓ Totale voci processate: ${totalProcessed}`);
-    }
     }
 
     async readExternalFile(url) {
