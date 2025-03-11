@@ -18,7 +18,7 @@ services:
       - .:/app # Monta la directory corrente nel container (opzionale, se vuoi lavorare con file locali)
     command: >
       sh -c "
-        apt-get update && apt-get install -y git python3 python3-pip &&
+        apt-get update && apt-get install -y git python3 python3-pip curl sqlite3 &&
         pip3 install requests &&
         rm -rf /tmp/repo &&
         git clone --branch main https://github.com/mccoy88f/OMG-Premium-TV.git /tmp/repo &&
