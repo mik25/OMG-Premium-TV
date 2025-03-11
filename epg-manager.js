@@ -8,14 +8,34 @@ const cron = require('node-cron');
 class EPGManager {
     constructor() {
         this.epgData = null;
-        this.programGuide = new Map();
-        this.channelIcons = new Map();
+        this.programGuide = new Map(); // Manteniamo per retrocompatibilità
+        this.channelIcons = new Map(); // Manteniamo per retrocompatibilità
         this.lastUpdate = null;
         this.isUpdating = false;
         this.CHUNK_SIZE = 10000;
-        this.lastEpgUrl = null;  // Nuova proprietà per tracciare l'ultimo URL EPG
+        this.lastEpgUrl = null;  // Proprietà per tracciare l'ultimo URL EPG
         this.cronJob = null;     // Proprietà per il job cron
+        this.dbManager = null;   // Riferimento al database manager
         this.validateAndSetTimezone();
+        this.initDatabaseManager();
+    }
+    
+    async initDatabaseManager() {
+        try {
+            const EPGDatabaseManager = require('./epg-db-manager');
+            this.dbManager = new EPGDatabaseManager();
+            await this.dbManager.initialize();
+            console.log('EPG Database Manager inizializzato con successo');
+            
+            // Recupera l'ultimo timestamp di aggiornamento
+            const lastUpdateTime = await this.dbManager.getLastUpdateTime();
+            if (lastUpdateTime) {
+                this.lastUpdate = lastUpdateTime;
+                console.log(`Ultimo aggiornamento EPG: ${new Date(lastUpdateTime).toLocaleString()}`);
+            }
+        } catch (error) {
+            console.error('Errore nell\'inizializzazione del database manager:', error);
+        }
     }
 
     normalizeId(id) {
@@ -139,6 +159,47 @@ class EPGManager {
             return;
         }
 
+        // Verifica se il database manager è inizializzato
+        if (!this.dbManager || !this.dbManager.isInitialized) {
+            console.log('Database manager non inizializzato, utilizzo metodo legacy...');
+            await this.processEPGInChunksLegacy(data);
+            return;
+        }
+
+        try {
+            // Pulisci il database prima di inserire nuovi dati
+            await this.dbManager.clearDatabase();
+            console.log('Database EPG pulito con successo');
+
+            // Utilizza il database manager per processare i dati in parallelo
+            await this.dbManager.processEPGDataInParallel(data);
+
+            // Aggiorna anche le strutture dati in memoria per retrocompatibilità
+            // Canali e icone
+            if (data.tv && data.tv.channel) {
+                console.log(`Aggiornamento cache in memoria per ${data.tv.channel.length} canali...`);
+                data.tv.channel.forEach(channel => {
+                    const id = channel.$.id;
+                    const icon = channel.icon?.[0]?.$?.src;
+                    if (id && icon) {
+                        this.channelIcons.set(this.normalizeId(id), icon);
+                    }
+                });
+            }
+
+            console.log('✓ Processamento EPG completato con successo');
+            this.lastUpdate = Date.now();
+        } catch (error) {
+            console.error('❌ Errore durante il processamento EPG con database:', error);
+            console.log('Tentativo di fallback al metodo legacy...');
+            await this.processEPGInChunksLegacy(data);
+        }
+    }
+
+    // Manteniamo il metodo originale come fallback
+    async processEPGInChunksLegacy(data) {
+        console.log('Utilizzo processamento EPG legacy (in memoria)...');
+        
         if (data.tv && data.tv.channel) {
             console.log(`Trovati ${data.tv.channel.length} canali nel file EPG`);
             data.tv.channel.forEach(channel => {
@@ -201,6 +262,7 @@ class EPGManager {
 
         console.log('\nRiepilogo Processamento EPG:');
         console.log(`✓ Totale voci processate: ${totalProcessed}`);
+    }
     }
 
     async readExternalFile(url) {
@@ -285,8 +347,20 @@ class EPGManager {
         }
     }
 
-    getCurrentProgram(channelId) {
+    async getCurrentProgram(channelId) {
         if (!channelId) return null;
+        
+        // Se il database manager è disponibile, usa quello
+        if (this.dbManager && this.dbManager.isInitialized) {
+            try {
+                return await this.dbManager.getCurrentProgram(channelId);
+            } catch (error) {
+                console.error('Errore nel recupero del programma corrente dal database:', error);
+                // Fallback al metodo legacy
+            }
+        }
+        
+        // Metodo legacy (in memoria)
         const normalizedChannelId = this.normalizeId(channelId);
         const programs = this.programGuide.get(normalizedChannelId);
         
@@ -306,8 +380,20 @@ class EPGManager {
         return null;
     }
 
-    getUpcomingPrograms(channelId) {
+    async getUpcomingPrograms(channelId) {
         if (!channelId) return [];
+        
+        // Se il database manager è disponibile, usa quello
+        if (this.dbManager && this.dbManager.isInitialized) {
+            try {
+                return await this.dbManager.getUpcomingPrograms(channelId, 2);
+            } catch (error) {
+                console.error('Errore nel recupero dei programmi futuri dal database:', error);
+                // Fallback al metodo legacy
+            }
+        }
+        
+        // Metodo legacy (in memoria)
         const normalizedChannelId = this.normalizeId(channelId);
         const programs = this.programGuide.get(normalizedChannelId);
         
@@ -325,8 +411,23 @@ class EPGManager {
             }));
     }
 
-    getChannelIcon(channelId) {
-        return channelId ? this.channelIcons?.get(this.normalizeId(channelId)) : null;
+    async getChannelIcon(channelId) {
+        if (!channelId) return null;
+        
+        // Se il database manager è disponibile, usa quello
+        if (this.dbManager && this.dbManager.isInitialized) {
+            try {
+                const icon = await this.dbManager.getChannelIcon(channelId);
+                if (icon) return icon;
+                // Se non trova l'icona nel database, fallback alla memoria
+            } catch (error) {
+                console.error('Errore nel recupero dell\'icona dal database:', error);
+                // Fallback al metodo legacy
+            }
+        }
+        
+        // Metodo legacy (in memoria)
+        return this.channelIcons?.get(this.normalizeId(channelId)) || null;
     }
 
     needsUpdate() {

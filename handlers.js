@@ -187,7 +187,7 @@ async function catalogHandler({ type, id, extra, config: userConfig }) {
                 }
             }
 
-            return enrichWithEPG(meta, channel.streamInfo?.tvg?.id, userConfig);
+            return await enrichWithEPG(meta, channel.streamInfo?.tvg?.id, userConfig);
         });
 
         return {
@@ -201,15 +201,15 @@ async function catalogHandler({ type, id, extra, config: userConfig }) {
     }
 }
 
-function enrichWithEPG(meta, channelId, userConfig) {
+async function enrichWithEPG(meta, channelId, userConfig) {
     if (!userConfig.epg_enabled || !channelId) {
         meta.description = `Canale live: ${meta.name}`;
         meta.releaseInfo = 'LIVE';
         return meta;
     }
 
-    const currentProgram = EPGManager.getCurrentProgram(normalizeId(channelId));
-    const upcomingPrograms = EPGManager.getUpcomingPrograms(normalizeId(channelId));
+    const currentProgram = await EPGManager.getCurrentProgram(normalizeId(channelId));
+    const upcomingPrograms = await EPGManager.getUpcomingPrograms(normalizeId(channelId));
 
     if (currentProgram) {
         meta.description = `IN ONDA ORA:\n${currentProgram.title}`;
